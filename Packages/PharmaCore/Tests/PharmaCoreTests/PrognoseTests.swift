@@ -3,7 +3,7 @@ import XCTest
 
 final class PrognoseTests: XCTestCase {
     func testStufenUndBegruendung() {
-        let klausuren = (2019...2024).map { KlausurDaten(id: "k\($0)", jahr: $0) }
+        let klausuren = (2019...2024).map { (jahr: Int) in KlausurDaten(id: "k\(jahr)", jahr: jahr) }
         var fragen: [AltfrageDaten] = []
         // Identitätsreaktionen in 5 von 6, zuletzt 2024
         for jahr in [2019, 2020, 2022, 2023, 2024] {
