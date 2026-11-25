@@ -1,0 +1,150 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pharmacore-tests:
+    name: PharmaCore-Tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode-Version
+        run: xcodebuild -version
+      - name: Tests ausführen
+        run: swift test --package-path Packages/PharmaCore
+
+  app:
+    name: App (${{ matrix.name }})
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            destination: "platform=macOS"
+            sdk: macosx
+          - name: iPad-Simulator
+            destination: "generic/platform=iOS Simulator"
+            sdk: iphonesimulator
+    steps:
+      - uses: actions/checkout@v4
+      - name: XcodeGen installieren
+        run: brew install xcodegen
+      - name: Projekt erzeugen
+        run: xcodegen generate
+      - name: Bauen
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project PharmaTutor.xcodeproj \
+            -scheme PharmaTutor \
+            -destination "${{ matrix.destination }}" \
+            -derivedDataPath build \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM= \
+            2>&1 | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+      - name: Warnungen prüfen
+        run: |
+          # Bekannte, harmlose Meldungen der Toolchain ausnehmen.
+          grep -E "warning:" build.log \
+            | grep -v "appintentsmetadataprocessor" \
+            | grep -v "Metadata extraction skipped" \
+            | sort -u > warnungen.txt || true
+          if [ -s warnungen.txt ]; then
+            echo "::error::Der Build enthält Warnungen:"
+            cat warnungen.txt
+            exit 1
+          fi
+          echo "Keine Warnungen."
+      - name: Build-Log sichern
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ matrix.name }}
+          path: build.log
+
+  start-test:
+    name: Starttest (${{ matrix.name }})
+    needs: app
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+          - name: iPad
+    steps:
+      - uses: actions/checkout@v4
+      - name: XcodeGen installieren
+        run: brew install xcodegen
+      - name: Projekt erzeugen
+        run: xcodegen generate
+      - name: iPad-Simulator starten, App installieren und Bildschirmfotos aufnehmen
+        if: matrix.name == 'iPad'
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          geraete = json.load(sys.stdin)["devices"]
+          kandidaten = [d for laufzeit, liste in geraete.items() if "iOS" in laufzeit for d in liste if "iPad" in d["name"]]
+          bevorzugt = [d for d in kandidaten if "Pro" in d["name"] and "13" in d["name"]] or kandidaten
+          print(bevorzugt[-1]["udid"])')
+          echo "Simulator: $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl status_bar "$UDID" override --time "9:41" || true
+          xcodebuild build -project PharmaTutor.xcodeproj -scheme PharmaTutor \
+            -destination "id=$UDID" -derivedDataPath build -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO -quiet
+          APP=$(find build/Build/Products -name "PharmaTutor.app" -path "*iphonesimulator*" | head -1)
+          xcrun simctl install "$UDID" "$APP"
+          mkdir -p bildschirmfotos
+          # Erster Start: Einführung
+          xcrun simctl launch "$UDID" de.pharmatutor.app
+          sleep 12
+          xcrun simctl io "$UDID" screenshot bildschirmfotos/ipad-1-einfuehrung.png
+          xcrun simctl terminate "$UDID" de.pharmatutor.app
+          # Zweiter Start ohne Einführung
+          xcrun simctl launch "$UDID" de.pharmatutor.app -onboardingAbgeschlossen YES
+          sleep 10
+          xcrun simctl io "$UDID" screenshot bildschirmfotos/ipad-2-heute.png
+          xcrun simctl spawn "$UDID" launchctl list | grep -q "de.pharmatutor.app" && echo "App läuft." || (echo "::error::App ist abgestürzt"; exit 1)
+      - name: Mac-App starten und Bildschirmfoto aufnehmen
+        if: matrix.name == 'macOS'
+        run: |
+          set -euo pipefail
+          xcodebuild build -project PharmaTutor.xcodeproj -scheme PharmaTutor \
+            -destination "platform=macOS" -derivedDataPath build -configuration Debug \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= -quiet
+          APP=$(find build/Build/Products -name "PharmaTutor.app" -path "*Debug/*" -not -path "*iphone*" | head -1)
+          mkdir -p bildschirmfotos
+          "$APP/Contents/MacOS/PharmaTutor" > app.log 2>&1 &
+          PID=$!
+          sleep 15
+          screencapture -x bildschirmfotos/mac-1-einfuehrung.png || true
+          if kill -0 $PID 2>/dev/null; then echo "App läuft."; else echo "::error::App ist abgestürzt"; cat app.log; exit 1; fi
+          kill $PID || true
+          sleep 2
+          "$APP/Contents/MacOS/PharmaTutor" -onboardingAbgeschlossen YES > app2.log 2>&1 &
+          PID=$!
+          sleep 12
+          screencapture -x bildschirmfotos/mac-2-heute.png || true
+          if kill -0 $PID 2>/dev/null; then echo "App läuft."; else echo "::error::App ist abgestürzt"; cat app2.log; exit 1; fi
+          kill $PID || true
+      - name: Bildschirmfotos hochladen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bildschirmfotos-${{ matrix.name }}
+          path: bildschirmfotos
+          if-no-files-found: ignore
