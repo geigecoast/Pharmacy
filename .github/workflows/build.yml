@@ -13,6 +13,7 @@ jobs:
   pharmacore-tests:
     name: PharmaCore-Tests
     runs-on: macos-15
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - name: Xcode-Version
@@ -23,6 +24,7 @@ jobs:
   app:
     name: App (${{ matrix.name }})
     runs-on: macos-15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -77,6 +79,7 @@ jobs:
     name: Starttest (${{ matrix.name }})
     needs: app
     runs-on: macos-15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -93,19 +96,25 @@ jobs:
         if: matrix.name == 'iPad'
         run: |
           set -euo pipefail
-          UDID=$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
+          SDK=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          echo "iOS-Simulator-SDK: $SDK"
+          xcodebuild build -project PharmaTutor.xcodeproj -scheme PharmaTutor \
+            -destination "generic/platform=iOS Simulator" -derivedDataPath build -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO -quiet
+          echo "Build fertig."
+          UDID=$(SDK="$SDK" xcrun simctl list devices available -j | python3 -c '
+          import json, os, sys
+          sdk = "iOS-" + os.environ["SDK"].replace(".", "-")
           geraete = json.load(sys.stdin)["devices"]
-          kandidaten = [d for laufzeit, liste in geraete.items() if "iOS" in laufzeit for d in liste if "iPad" in d["name"]]
+          passend = [d for rt, l in geraete.items() if rt.endswith(sdk) for d in l if "iPad" in d["name"]]
+          alle = [d for rt, l in geraete.items() if "iOS" in rt for d in l if "iPad" in d["name"]]
+          kandidaten = passend or alle
           bevorzugt = [d for d in kandidaten if "Pro" in d["name"] and "13" in d["name"]] or kandidaten
           print(bevorzugt[-1]["udid"])')
           echo "Simulator: $UDID"
-          xcrun simctl boot "$UDID"
+          xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
-          xcrun simctl status_bar "$UDID" override --time "9:41" || true
-          xcodebuild build -project PharmaTutor.xcodeproj -scheme PharmaTutor \
-            -destination "id=$UDID" -derivedDataPath build -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO -quiet
+          echo "Simulator gestartet."
           APP=$(find build/Build/Products -name "PharmaTutor.app" -path "*iphonesimulator*" | head -1)
           xcrun simctl install "$UDID" "$APP"
           mkdir -p bildschirmfotos
@@ -118,7 +127,12 @@ jobs:
           xcrun simctl launch "$UDID" de.pharmatutor.app -onboardingAbgeschlossen YES
           sleep 10
           xcrun simctl io "$UDID" screenshot bildschirmfotos/ipad-2-heute.png
-          xcrun simctl spawn "$UDID" launchctl list | grep -q "de.pharmatutor.app" && echo "App läuft." || (echo "::error::App ist abgestürzt"; exit 1)
+          if xcrun simctl spawn "$UDID" launchctl list | grep -q "de.pharmatutor.app"; then
+            echo "App läuft."
+          else
+            echo "::error::App ist abgestürzt"
+            exit 1
+          fi
       - name: Mac-App starten und Bildschirmfoto aufnehmen
         if: matrix.name == 'macOS'
         run: |
