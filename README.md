@@ -47,5 +47,5 @@ swift test --package-path Packages/PharmaCore
 - [x] (e) Tutor
 - [x] (f) Altklausuren-Analyse + Probeklausuren
 - [x] (g) Analysen + Dashboard
-- [ ] (h) Gamification
+- [x] (h) Gamification: Lernserie mit Tagesziel und Ruhetag, Punkte und Stufen, Abzeichen, Wochenziel, Lernkalender
 - [ ] (i) Sync + Feinschliff

@@ -17,6 +17,7 @@ struct Seitenleiste: View {
     @Environment(\.modelContext) private var kontext
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var mehrereFenster
+    @AppStorage(EinstellungsSchluessel.gamificationAktiv) private var gamificationAktiv = true
 
     /// Segmente: 5.–8., Staatsexamen, Grundstudium-Archiv (0 = Archiv 1.–4.).
     private static let archivSegment = 0
@@ -93,6 +94,9 @@ struct Seitenleiste: View {
         navZeile("Heute lernen", .heute, zaehler: offeneEinheitenHeute)
         navZeile("Kalender", .kalender)
         navZeile("Dashboard & Analysen", .dashboard)
+        if gamificationAktiv {
+            navZeile("Erfolge", .erfolge)
+        }
 
         Segmentleiste(werte: segmente, auswahl: segmentAuswahl, titel: segmentTitel)
             .padding(.top, 22)

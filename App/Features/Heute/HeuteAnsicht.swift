@@ -59,24 +59,25 @@ struct HeuteAnsicht: View {
 
     @Query private var alleSitzungen: [Lernsitzung]
 
-    /// Tage mit Lernzeit (Lerneinheiten, Fokus-Timer, Karten, Quiz).
+    @AppStorage(EinstellungsSchluessel.gamificationAktiv) private var gamificationAktiv = true
+
+    /// Tagesziel für Lernserie und Wochenleiste (ohne Gamification: jede Lernminute zählt).
+    private var tagesziel: Int { gamificationAktiv ? GamificationDienst.tagesziel : 1 }
+
+    /// Tage mit erreichtem Tagesziel (Lerneinheiten, Fokus-Timer, Karten, Quiz).
     private var lerntage: Set<Date> {
         _ = alleSitzungen.count
-        return Set(AnalyseDienst.lernminuten(lv: nil, kontext: kontext).filter { $0.value >= 1 }.keys)
+        let grenze = Double(tagesziel)
+        return Set(AnalyseDienst.lernminuten(lv: nil, kontext: kontext).filter { $0.value >= grenze }.keys)
     }
 
-    /// Lernserie: aufeinanderfolgende Lerntage bis heute (heute darf noch offen sein).
+    /// Lernserie (heute darf noch offen sein; optional ein Ruhetag pro Woche).
     private var lernserie: Int {
-        let tage = lerntage
-        var tag = kalender.startOfDay(for: Date())
-        if !tage.contains(tag), let gestern = kalender.date(byAdding: .day, value: -1, to: tag) { tag = gestern }
-        var serie = 0
-        while tage.contains(tag) {
-            serie += 1
-            guard let davor = kalender.date(byAdding: .day, value: -1, to: tag) else { break }
-            tag = davor
-        }
-        return serie
+        _ = alleSitzungen.count
+        let minuten = AnalyseDienst.lernminuten(lv: nil, kontext: kontext)
+        return Gamification.serie(minutenProTag: minuten, tagesziel: tagesziel,
+                                  ruhetagErlaubt: gamificationAktiv && GamificationDienst.ruhetagErlaubt,
+                                  heute: Date(), kalender: kalender).aktuell
     }
 
     private func bereitschaft(_ tp: Teilpruefung) -> Double {
@@ -326,6 +327,11 @@ struct HeuteAnsicht: View {
             Wochenleiste(lerntage: lerntage, kalender: kalender)
                 .padding(.top, 28)
 
+            if gamificationAktiv {
+                ErfolgsZeile(sitzungen: alleSitzungen.count) { auswahl = .erfolge }
+                    .padding(.top, 24)
+            }
+
             if let tp = anstehend.first, let lv = tp.lehrveranstaltung {
                 Aktionskarte(titel: "Schnellquiz starten", untertitel: "5 Minuten · \(lv.anzeigename) \(LfdNr.anzeige(lv.lfdNr))") {
                     lvTab = .quiz
@@ -435,6 +441,41 @@ private struct FristenZeile: View {
             .buttonStyle(.plain)
             Haarlinie()
         }
+    }
+}
+
+/// Stufe und Tagesziel als kompakte Zeile unter der Wochenleiste.
+struct ErfolgsZeile: View {
+    /// Nur, damit die Zeile nach neuen Fokus-Sitzungen neu berechnet wird.
+    let sitzungen: Int
+    var oeffnen: () -> Void
+    @Environment(\.modelContext) private var kontext
+
+    var body: some View {
+        let stand = GamificationDienst.stand(kontext)
+        let anteil = Double(stand.heuteMinuten) / Double(max(stand.tagesziel, 1))
+        Button(action: oeffnen) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(verbatim: "Stufe \(stand.stufe.nummer) · \(stand.stufe.titel)")
+                        .font(Thema.ui(13, .mittel))
+                        .foregroundStyle(Thema.tinte)
+                    Spacer(minLength: 8)
+                    Text(verbatim: stand.serie.heuteErreicht
+                         ? "Tagesziel erreicht"
+                         : "Heute \(stand.heuteMinuten)/\(stand.tagesziel) min")
+                        .font(Thema.mono(11))
+                        .foregroundStyle(Thema.tinteSekundaer)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Thema.tinteTertiaer)
+                }
+                Fortschrittslinie(wert: anteil)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Erfolge öffnen: Lernserie, Stufe und Abzeichen")
     }
 }
 

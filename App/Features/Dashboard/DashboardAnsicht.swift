@@ -13,6 +13,7 @@ struct DashboardAnsicht: View {
     @Environment(\.modelContext) private var kontext
     @AppStorage(EinstellungsSchluessel.lernplanWarnungen) private var warnungen = ""
     @AppStorage(EinstellungsSchluessel.lernzeiten) private var wochenplan: Wochenplan = .standard
+    @AppStorage(EinstellungsSchluessel.gamificationAktiv) private var gamificationAktiv = true
 
     private let kalender = Calendar.deutsch
     private let gebiete: [Stoffgebiet] = [.e, .f, .g, .h, .i]
@@ -169,6 +170,23 @@ struct DashboardAnsicht: View {
                         }
                         .buttonStyle(.plain)
                         .overlay(alignment: .bottom) { Haarlinie() }
+                        if gamificationAktiv {
+                            Button {
+                                auswahl = .erfolge
+                            } label: {
+                                HStack {
+                                    Text("Erfolge: Lernserie, Stufe und Abzeichen")
+                                        .font(Thema.ui(14))
+                                    Spacer()
+                                    Image(systemName: "arrow.right")
+                                }
+                                .foregroundStyle(Thema.tinte)
+                                .padding(.vertical, 16)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .overlay(alignment: .bottom) { Haarlinie() }
+                        }
                     }
                 }
                 .frame(maxWidth: 1100, alignment: .leading)

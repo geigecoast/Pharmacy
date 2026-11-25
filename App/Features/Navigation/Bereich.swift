@@ -6,6 +6,7 @@ enum Bereich: Hashable {
     case kalender
     case dashboard
     case voraussetzungen
+    case erfolge
     case einstellungen
     case semester(Semester)
     case lehrveranstaltung(Lehrveranstaltung)

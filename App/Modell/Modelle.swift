@@ -337,5 +337,6 @@ enum Datenschema {
         AltklausurFrage.self,
         Probeklausur.self,
         Lernsitzung.self,
+        Erfolg.self,
     ]
 }

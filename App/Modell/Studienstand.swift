@@ -60,6 +60,14 @@ enum EinstellungsSchluessel {
     // Systemkalender
     static let kalenderLerneinheitenExport = "kalenderLerneinheitenExport"
     static let systemkalenderID = "systemkalenderID"
+
+    // Gamification
+    static let gamificationAktiv = "gamificationAktiv"
+    static let tageszielMinuten = "tageszielMinuten"
+    /// 0 = aus den Lernzeiten des Lernplans.
+    static let wochenzielMinuten = "wochenzielMinuten"
+    static let ruhetagErlaubt = "ruhetagErlaubt"
+    static let erfolgeInitialisiert = "erfolgeInitialisiert"
 }
 
 /// Standardwerte der Einstellungen (müssen mit den @AppStorage-Vorgaben übereinstimmen).
@@ -68,6 +76,7 @@ enum Standardwerte {
     static let praktikumMinuten = 60
     static let erinnerungUhrzeitMinuten = 17 * 60
     static let lernstartMinuten = 8 * 60 + 30
+    static let tageszielMinuten = 20
 
     static var wochenplan: Wochenplan {
         UserDefaults.standard.string(forKey: EinstellungsSchluessel.lernzeiten).flatMap(Wochenplan.init(rawValue:)) ?? .standard

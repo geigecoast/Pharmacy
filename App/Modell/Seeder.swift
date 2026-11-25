@@ -18,6 +18,8 @@ enum Seeder {
     static func zuruecksetzen(_ kontext: ModelContext) {
         do {
             try kontext.delete(model: Lernsitzung.self)
+            try kontext.delete(model: Erfolg.self)
+            UserDefaults.standard.removeObject(forKey: EinstellungsSchluessel.erfolgeInitialisiert)
             try kontext.delete(model: AltklausurFrage.self)
             try kontext.delete(model: Altklausur.self)
             try kontext.delete(model: Probeklausur.self)

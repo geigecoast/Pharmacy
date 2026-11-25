@@ -1,5 +1,7 @@
 import SwiftUI
 import SwiftData
+import Combine
+import PharmaCore
 
 struct HauptAnsicht: View {
     @Environment(\.modelContext) private var kontext
@@ -11,6 +13,8 @@ struct HauptAnsicht: View {
     @State private var bereit = false
 
     @State private var fokus = FokusTimer()
+    @State private var neueAbzeichen: [Gamification.Abzeichen] = []
+    @State private var abzeichenPruefung: Task<Void, Never>?
     @State private var spalten: NavigationSplitViewVisibility = .all
 
     /// Lehrveranstaltung der aktuellen Auswahl (für den Fokus-Timer).
@@ -45,13 +49,31 @@ struct HauptAnsicht: View {
             Seeder.ladeFallsNoetig(kontext)
             LernplanDienst.taeglichAktualisierenFallsNoetig(kontext)
             bereit = true
+            abzeichenPruefen()
             await ErinnerungsDienst.planen(kontext)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ModelContext.didSave)) { _ in
+            abzeichenPruefen()
+        }
+        .overlay(alignment: .bottom) {
+            if let erstes = neueAbzeichen.first {
+                AbzeichenMeldung(abzeichen: erstes, weitere: neueAbzeichen.count - 1, oeffnen: {
+                    auswahl = .erfolge
+                    kompaktSpalte = .detail
+                    neueAbzeichen = []
+                }, schliessen: {
+                    withAnimation(.easeOut(duration: 0.25)) { neueAbzeichen = [] }
+                })
+                .padding(.bottom, 28)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .onChange(of: szenenPhase) { _, phase in
             if phase != .active {
                 Task { await ErinnerungsDienst.planen(kontext) }
             } else {
                 LernplanDienst.taeglichAktualisierenFallsNoetig(kontext)
+                abzeichenPruefen()
             }
         }
         .sheet(isPresented: Binding(
@@ -59,6 +81,18 @@ struct HauptAnsicht: View {
             set: { if !$0 { onboardingAbgeschlossen = true } }
         )) {
             OnboardingAnsicht()
+        }
+    }
+
+    /// Prüft (verzögert, gebündelt) auf neu erreichte Abzeichen und zeigt sie an.
+    private func abzeichenPruefen() {
+        abzeichenPruefung?.cancel()
+        abzeichenPruefung = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled, bereit else { return }
+            let neu = GamificationDienst.pruefen(kontext)
+            guard !neu.isEmpty else { return }
+            withAnimation(.spring(duration: 0.4)) { neueAbzeichen = neu }
         }
     }
 }
@@ -76,6 +110,8 @@ struct DetailAnsicht: View {
             DashboardAnsicht(auswahl: $auswahl)
         case .voraussetzungen:
             VoraussetzungenAnsicht(auswahl: $auswahl)
+        case .erfolge:
+            ErfolgeAnsicht(auswahl: $auswahl)
         case .einstellungen:
             EinstellungenAnsicht()
         case .semester(let semester):
@@ -138,6 +174,60 @@ struct LVFenster: View {
         } else {
             ContentUnavailableView("Lehrveranstaltung nicht gefunden", systemImage: "questionmark.folder",
                                    description: Text("Sie wurde vielleicht gelöscht."))
+        }
+    }
+}
+
+/// Schwarze Meldung „Neues Abzeichen“ am unteren Rand; verschwindet nach einigen Sekunden.
+struct AbzeichenMeldung: View {
+    let abzeichen: Gamification.Abzeichen
+    let weitere: Int
+    var oeffnen: () -> Void
+    var schliessen: () -> Void
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: abzeichen.symbol)
+                .font(.system(size: 16))
+                .foregroundStyle(Thema.tinte)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Thema.tinteInvers))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Neues Abzeichen")
+                    .textCase(.uppercase)
+                    .font(Thema.ui(10))
+                    .tracking(0.8)
+                    .opacity(0.7)
+                Text(verbatim: abzeichen.titel)
+                    .font(Thema.display(22))
+                Text(verbatim: abzeichen.beschreibung + (weitere > 0 ? " · und \(weitere) \(weitere == 1 ? "weiteres" : "weitere")" : ""))
+                    .font(Thema.ui(12))
+                    .opacity(0.75)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            Button(action: schliessen) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .medium))
+                    .padding(8)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Schließen")
+        }
+        .foregroundStyle(Thema.tinteInvers)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .frame(maxWidth: 460)
+        .background(Thema.tinte, in: RoundedRectangle(cornerRadius: Thema.radius))
+        .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+        .contentShape(RoundedRectangle(cornerRadius: Thema.radius))
+        .onTapGesture(perform: oeffnen)
+        .padding(.horizontal, 16)
+        .task {
+            try? await Task.sleep(for: .seconds(7))
+            guard !Task.isCancelled else { return }
+            schliessen()
         }
     }
 }

@@ -15,6 +15,10 @@ struct EinstellungenAnsicht: View {
     @AppStorage(EinstellungsSchluessel.erinnerungUhrzeitMinuten) private var erinnerungUm = Standardwerte.erinnerungUhrzeitMinuten
     @AppStorage(EinstellungsSchluessel.kalenderLerneinheitenExport) private var lerneinheitenExportieren = true
     @AppStorage(EinstellungsSchluessel.kiModell) private var kiModell = ClaudeAPI.standardModell
+    @AppStorage(EinstellungsSchluessel.gamificationAktiv) private var gamificationAktiv = true
+    @AppStorage(EinstellungsSchluessel.tageszielMinuten) private var tagesziel = Standardwerte.tageszielMinuten
+    @AppStorage(EinstellungsSchluessel.wochenzielMinuten) private var wochenziel = 0
+    @AppStorage(EinstellungsSchluessel.ruhetagErlaubt) private var ruhetag = true
 
     @State private var zeigeAPI = false
     @State private var zeigeLernzeiten = false
@@ -100,6 +104,36 @@ struct EinstellungenAnsicht: View {
                     Text(erinnerungsHinweis.map { LocalizedStringKey($0) } ?? "Erinnert an Teilprüfungen (eine Woche und einen Tag vorher), QIS/LSF-Anmeldeschlüsse und Fristen wie die Platzvergabe des Wahlpflichtfachs. Bestandene Lehrveranstaltungen werden nicht erinnert.")
                         .font(Thema.ui(12))
                         .foregroundStyle(erinnerungsHinweis == nil ? Thema.tinteTertiaer : Stoffgebiet.i.farbe)
+                        .lineSpacing(3)
+                        .padding(.top, 12)
+                }
+
+                gruppe("Erfolge") {
+                    Wertzeile(titel: "Lernserie, Stufen und Abzeichen") {
+                        Toggle("Erfolge", isOn: $gamificationAktiv).labelsHidden()
+                    }
+                    if gamificationAktiv {
+                        Wertzeile(titel: "Tagesziel für die Lernserie") {
+                            Stepper(value: $tagesziel, in: 5...240, step: 5) {
+                                Text(verbatim: Dauer.text(minuten: tagesziel))
+                            }
+                            .fixedSize()
+                        }
+                        Wertzeile(titel: "Wochenziel") {
+                            Stepper(value: $wochenziel, in: 0...3000, step: 30) {
+                                Text(verbatim: wochenziel == 0
+                                     ? "Wie Lernzeiten (\(Analyse.stundenText(wochenplan.summeProWoche)))"
+                                     : Analyse.stundenText(wochenziel))
+                            }
+                            .fixedSize()
+                        }
+                        Wertzeile(titel: "Ein Ruhetag pro Woche") {
+                            Toggle("Ruhetag", isOn: $ruhetag).labelsHidden()
+                        }
+                    }
+                    Text("Die Lernserie zählt Tage, an denen du das Tagesziel erreichst. Mit Ruhetag darf pro Woche ein einzelner Tag fehlen. Punkte und Abzeichen entstehen aus Lernzeit, Karten, Quiz, Probeklausuren und bestandenen Teilprüfungen.")
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteTertiaer)
                         .lineSpacing(3)
                         .padding(.top, 12)
                 }

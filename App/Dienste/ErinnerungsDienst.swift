@@ -81,6 +81,21 @@ enum ErinnerungsDienst {
             }
         }
 
+        // Lernserie in Gefahr: heute um 20:30, falls das Tagesziel noch fehlt.
+        if GamificationDienst.aktiv {
+            let stand = GamificationDienst.stand(kontext, jetzt: jetzt)
+            if stand.serie.aktuell > 0, !stand.serie.heuteErreicht,
+               let zeitpunkt = kalender.date(bySettingHour: 20, minute: 30, second: 0, of: jetzt) {
+                let rest = max(0, stand.tagesziel - stand.heuteMinuten)
+                let folge = GamificationDienst.ruhetagErlaubt && !stand.serie.ruhetagDieseWocheGenutzt
+                    ? "sonst wird heute dein Ruhetag der Woche."
+                    : "sonst reißt die Serie heute."
+                liste.append(Erinnerung(datum: zeitpunkt, kennung: "\(praefix)serie",
+                                        titel: "Lernserie: \(stand.serie.aktuell) \(stand.serie.aktuell == 1 ? "Tag" : "Tage")",
+                                        text: "Noch \(rest) Minuten bis zum Tagesziel – \(folge)"))
+            }
+        }
+
         let anstehend = liste.filter { $0.datum > jetzt }.sorted { $0.datum < $1.datum }.prefix(maximum)
         for erinnerung in anstehend {
             let inhalt = UNMutableNotificationContent()
