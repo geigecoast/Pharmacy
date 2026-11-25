@@ -90,6 +90,9 @@ final class Lehrveranstaltung {
     @Relationship(deleteRule: .cascade, inverse: \QuizErgebnis.lehrveranstaltung)
     var quizErgebnisse: [QuizErgebnis]? = []
 
+    @Relationship(deleteRule: .cascade, inverse: \TutorChat.lehrveranstaltung)
+    var tutorChats: [TutorChat]? = []
+
     init(lfdNr: String, bezeichnung: String, lehrform: Lehrform = .v, sws: String = "", sortierung: Int = 0) {
         self.lfdNr = lfdNr
         self.bezeichnung = bezeichnung
@@ -318,5 +321,8 @@ enum Datenschema {
         Wiederholung.self,
         Fehlereintrag.self,
         QuizErgebnis.self,
+        TutorChat.self,
+        TutorNachricht.self,
+        Zusammenfassung.self,
     ]
 }

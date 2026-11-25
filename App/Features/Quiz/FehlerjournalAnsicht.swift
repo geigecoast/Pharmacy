@@ -84,6 +84,7 @@ struct FehlerjournalAnsicht: View {
 
 private struct FehlerZeile: View {
     @Bindable var eintrag: Fehlereintrag
+    @State private var erklaeren = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -103,9 +104,7 @@ private struct FehlerZeile: View {
                     .font(Thema.ui(11))
                     .foregroundStyle(Thema.tinteTertiaer)
                 Spacer()
-                Button("Erklär mir meinen Fehler") {}
-                    .disabled(true)
-                    .help("Der KI-Tutor erklärt Fehler ab Ausbaustufe e")
+                Button("Erklär mir meinen Fehler") { erklaeren = true }
                 Button(eintrag.verstanden ? "Wieder öffnen" : "Verstanden") { eintrag.verstanden.toggle() }
             }
             .buttonStyle(.plain)
@@ -114,5 +113,68 @@ private struct FehlerZeile: View {
         }
         .padding(.vertical, 16)
         .overlay(alignment: .bottom) { Haarlinie() }
+        .sheet(isPresented: $erklaeren) {
+            KIErklaerung(titel: "Erklär mir meinen Fehler", frage: eintrag.frage, anfrage: VorlesungsKI.fehlerErklaerung(eintrag))
+        }
+    }
+}
+
+/// Einzelne KI-Erklärung mit Streaming (z. B. zu einem Fehler).
+struct KIErklaerung: View {
+    let titel: String
+    let frage: String
+    let anfrage: KIAnfrage
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var fehler: String?
+    @State private var laeuft = true
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text(verbatim: frage)
+                        .font(Thema.serif(22))
+                        .foregroundStyle(Thema.tinte)
+                    Haarlinie(farbe: Thema.tinte)
+                    if let fehler {
+                        Text(verbatim: fehler).font(Thema.ui(13)).foregroundStyle(Stoffgebiet.i.farbe)
+                    } else if text.isEmpty {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Der Tutor schreibt …").font(Thema.ui(13)).foregroundStyle(Thema.tinteSekundaer)
+                        }
+                    }
+                    StrukturierteAntwort(text: text, hauptSchrift: Thema.serif(18))
+                }
+                .frame(maxWidth: 720, alignment: .leading)
+                .frame(maxWidth: .infinity)
+                .padding(40)
+            }
+            .background(Thema.flaeche)
+            .navigationTitle(titel)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Fertig") { dismiss() }
+                }
+            }
+            .task {
+                guard KI.istEingerichtet else {
+                    fehler = KIFehler.keinSchluessel.errorDescription
+                    return
+                }
+                do {
+                    _ = try await KI.vollstaendig(anfrage) { teil in text = teil }
+                } catch is CancellationError {
+                } catch {
+                    fehler = error.localizedDescription
+                }
+                laeuft = false
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 640, minHeight: 560)
+        #endif
     }
 }

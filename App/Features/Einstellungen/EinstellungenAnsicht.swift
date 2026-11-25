@@ -14,6 +14,7 @@ struct EinstellungenAnsicht: View {
     @AppStorage(EinstellungsSchluessel.taeglicheErinnerung) private var taeglich = true
     @AppStorage(EinstellungsSchluessel.erinnerungUhrzeitMinuten) private var erinnerungUm = Standardwerte.erinnerungUhrzeitMinuten
     @AppStorage(EinstellungsSchluessel.kalenderLerneinheitenExport) private var lerneinheitenExportieren = true
+    @AppStorage(EinstellungsSchluessel.kiModell) private var kiModell = ClaudeAPI.standardModell
 
     @State private var zeigeAPI = false
     @State private var zeigeLernzeiten = false
@@ -108,6 +109,16 @@ struct EinstellungenAnsicht: View {
                         Button(apiVorhanden ? "In Schlüsselbund gespeichert" : "Nicht hinterlegt") { zeigeAPI = true }
                             .buttonStyle(.plain)
                             .underline()
+                    }
+                    Wertzeile(titel: "KI-Modell") {
+                        Picker("KI-Modell", selection: $kiModell) {
+                            ForEach(ClaudeAPI.modelle.map { $0.id }, id: \.self) { kennung in
+                                Text(verbatim: ClaudeAPI.modelle.first { $0.id == kennung }?.name ?? kennung).tag(kennung)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .fixedSize()
                     }
                     Wertzeile(titel: "Google Drive") {
                         Text("Über die Dateien-App")
@@ -269,7 +280,7 @@ struct APISchluesselBereich: View {
         } header: {
             Text("KI (Claude)")
         } footer: {
-            Text("Den Schlüssel erstellst du in der Anthropic Console. Er wird nur im Schlüsselbund dieses Geräts gespeichert. Die KI-Funktionen folgen ab Ausbaustufe e.")
+            Text("Den Schlüssel erstellst du in der Anthropic Console (console.anthropic.com). Er wird nur im Schlüsselbund dieses Geräts gespeichert. An die KI gehen nur Inhalte, die du ausdrücklich auswählst – z. B. deine Frage und passende Auszüge aus deinen Unterlagen.")
         }
         .onAppear {
             vorhanden = Schluesselbund.lesen(konto: Schluesselbund.claudeAPIKonto) != nil

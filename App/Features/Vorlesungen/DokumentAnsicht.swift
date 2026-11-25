@@ -239,8 +239,50 @@ struct DokumentSeitenpanel: View {
     let steuerung: PDFSteuerung
 
     @Environment(\.modelContext) private var kontext
-    @State private var stufe = 1
+    @State private var stufe: ZusammenfassungsStufe = .lernen
     @State private var farbFilter: MarkierungsFarbe?
+    @State private var kiLaeuft: String?
+    @State private var kiStream = ""
+    @State private var kiMeldung: String?
+    @State private var exportDatei: PDFDatei?
+    @State private var zeigeExport = false
+
+    private var zusammenfassung: Zusammenfassung? {
+        (dokument.zusammenfassungen ?? []).filter { $0.stufe == stufe }.max { $0.erstelltAm < $1.erstelltAm }
+    }
+
+    private func kiStarten(_ name: String, _ arbeit: @escaping () async throws -> String?) {
+        guard KI.istEingerichtet else {
+            kiMeldung = KIFehler.keinSchluessel.errorDescription
+            return
+        }
+        guard VorlesungsKI.hatText(dokument) else {
+            kiMeldung = "Diese Unterlage enthält (noch) keinen lesbaren Text. Warte, bis die Texterkennung fertig ist."
+            return
+        }
+        kiLaeuft = name
+        kiMeldung = nil
+        kiStream = ""
+        Task {
+            do {
+                kiMeldung = try await arbeit()
+            } catch {
+                kiMeldung = error.localizedDescription
+            }
+            kiLaeuft = nil
+            kiStream = ""
+        }
+    }
+
+    private func zusammenfassungExportieren(_ eintrag: Zusammenfassung) {
+        let lv = dokument.lehrveranstaltung
+        let kopf = [lv.map { "\(LfdNr.anzeige($0.lfdNr)) \($0.anzeigename)" } ?? "", dokument.titel, Date().kurzesDatum]
+            .filter { !$0.isEmpty }.joined(separator: " · ")
+        let unter = "Vorlesung vom \(dokument.datum.kurzesDatum) · erstellt am \(eintrag.erstelltAm.kurzesDatum)"
+        guard let daten = BerichtPDF.erstellen(titel: eintrag.stufe.name, untertitel: unter, kopfzeile: kopf, markdown: eintrag.text) else { return }
+        exportDatei = PDFDatei(daten: daten)
+        zeigeExport = true
+    }
 
     private var vorschlaege: [Markierung] {
         (dokument.markierungen ?? []).filter { $0.quelle == .ki && $0.status == .vorgeschlagen }
@@ -255,13 +297,38 @@ struct DokumentSeitenpanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Kleintitel(text: "Zusammenfassung")
-                Segmentleiste(werte: [0, 1, 2], auswahl: $stufe) { ["Kurz", "Lernen", "Spickzettel"][$0] }
+                Segmentleiste(werte: ZusammenfassungsStufe.allCases, auswahl: $stufe) { $0.segment }
                     .padding(.top, 12)
-                Text("Zusammenfassungen in drei Stufen erstellt der KI-Tutor – verfügbar ab Ausbaustufe e.")
-                    .font(Thema.ui(13))
-                    .foregroundStyle(Thema.tinteSekundaer)
-                    .lineSpacing(4)
-                    .padding(.top, 14)
+                Group {
+                    if kiLaeuft == "zusammenfassung" {
+                        if kiStream.isEmpty {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("\(stufe.name) wird erstellt …").font(Thema.ui(12)).foregroundStyle(Thema.tinteSekundaer)
+                            }
+                        } else {
+                            MarkdownText(text: kiStream, schrift: Thema.ui(13))
+                        }
+                    } else if let zusammenfassung {
+                        MarkdownText(text: zusammenfassung.text, schrift: Thema.ui(13))
+                        HStack(spacing: 14) {
+                            Button("Als PDF exportieren") { zusammenfassungExportieren(zusammenfassung) }
+                            Button("Neu erstellen") { zusammenfassen() }
+                        }
+                        .buttonStyle(.plain)
+                        .font(Thema.ui(12))
+                        .underline()
+                        .foregroundStyle(Thema.tinteSekundaer)
+                        .padding(.top, 4)
+                    } else {
+                        Button("\(stufe.name) erstellen (KI)") { zusammenfassen() }
+                            .buttonStyle(.plain)
+                            .font(Thema.ui(13, .mittel))
+                            .underline()
+                            .disabled(kiLaeuft != nil)
+                    }
+                }
+                .padding(.top, 14)
 
                 Haarlinie().padding(.vertical, 24)
 
@@ -272,11 +339,34 @@ struct DokumentSeitenpanel: View {
                         .font(Thema.ui(11))
                         .foregroundStyle(Thema.tinteTertiaer)
                 }
-                if vorschlaege.isEmpty {
-                    Text("Hier erscheinen Vorschläge der KI zum Übernehmen oder Ablehnen.")
-                        .font(Thema.ui(12))
-                        .foregroundStyle(Thema.tinteTertiaer)
+                if kiLaeuft == "kernaussagen" {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Kernaussagen werden gesucht …").font(Thema.ui(12)).foregroundStyle(Thema.tinteSekundaer)
+                    }
+                    .padding(.top, 10)
+                } else if vorschlaege.isEmpty {
+                    Button("Kernaussagen markieren (KI)") { kernaussagen() }
+                        .buttonStyle(.plain)
+                        .font(Thema.ui(13, .mittel))
+                        .underline()
+                        .disabled(kiLaeuft != nil || !dokument.istPDF)
                         .padding(.top, 10)
+                    Text("Die KI schlägt wichtige Aussagen und wahrscheinliche Prüfungsthemen vor – du übernimmst oder lehnst jede einzeln ab.")
+                        .font(Thema.ui(11))
+                        .foregroundStyle(Thema.tinteTertiaer)
+                        .padding(.top, 4)
+                }
+                if !vorschlaege.isEmpty {
+                    HStack(spacing: 14) {
+                        Button("Alle übernehmen") { vorschlaege.forEach { $0.status = .angenommen } }
+                        Button("Alle ablehnen") { vorschlaege.forEach { $0.status = .abgelehnt } }
+                    }
+                    .buttonStyle(.plain)
+                    .font(Thema.ui(11))
+                    .underline()
+                    .foregroundStyle(Thema.tinteSekundaer)
+                    .padding(.top, 8)
                 }
                 ForEach(vorschlaege) { vorschlag in
                     KernaussageKarte(markierung: vorschlag) {
@@ -345,6 +435,26 @@ struct DokumentSeitenpanel: View {
                 }
 
                 Haarlinie().padding(.vertical, 24)
+                Kleintitel(text: "Karteikarten")
+                Button(kiLaeuft == "karten" ? "Karten werden erzeugt …" : "Karteikarten aus dieser Vorlesung erzeugen (KI)") {
+                    kiStarten("karten") {
+                        let anzahl = try await VorlesungsKI.kartenErzeugen(dokument, kontext: kontext)
+                        return "\(anzahl) Karteikarten erstellt – zu finden unter „Quiz & Karteikarten“."
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(Thema.ui(13, .mittel))
+                .underline()
+                .disabled(kiLaeuft != nil)
+                .padding(.top, 10)
+                if let kiMeldung {
+                    Text(verbatim: kiMeldung)
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteSekundaer)
+                        .padding(.top, 10)
+                }
+
+                Haarlinie().padding(.vertical, 24)
                 Kleintitel(text: "Notizen")
                 TextField("Notizen zur Vorlesung", text: $dokument.notizen, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -379,6 +489,26 @@ struct DokumentSeitenpanel: View {
             .padding(24)
         }
         .background(Thema.flaeche)
+        .fileExporter(isPresented: $zeigeExport, document: exportDatei, contentType: .pdf,
+                      defaultFilename: "\(dokument.titel) – \(stufe.name)") { _ in }
+    }
+
+    private func zusammenfassen() {
+        let gewaehlt = stufe
+        kiStarten("zusammenfassung") {
+            try await VorlesungsKI.zusammenfassen(dokument, stufe: gewaehlt, kontext: kontext) { teil in kiStream = teil }
+            return nil
+        }
+    }
+
+    private func kernaussagen() {
+        kiStarten("kernaussagen") {
+            let ergebnis = try await VorlesungsKI.kernaussagenMarkieren(dokument, kontext: kontext)
+            if ergebnis.vorgeschlagen == 0 { return "Es wurden keine passenden Stellen im Text gefunden." }
+            return ergebnis.nichtGefunden > 0
+                ? "\(ergebnis.vorgeschlagen) Vorschläge markiert, \(ergebnis.nichtGefunden) Zitate im PDF nicht gefunden."
+                : "\(ergebnis.vorgeschlagen) Vorschläge markiert."
+        }
     }
 }
 

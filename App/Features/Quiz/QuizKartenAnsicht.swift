@@ -18,6 +18,7 @@ struct QuizKartenAnsicht: View {
     @State private var exportTyp: UTType = .ankiPaket
     @State private var exportName = ""
     @State private var zeigeExport = false
+    @State private var kiLaeuft = false
 
     private var karten: [Karteikarte] { lv.karteikarten ?? [] }
 
@@ -152,6 +153,28 @@ struct QuizKartenAnsicht: View {
                         : "\(ergebnis.erstellt) Karten erstellt."
                 }
                 .disabled(offen == 0)
+                let pdfs = (lv.dokumente ?? []).filter { $0.typ != .audio || !$0.transkriptText.isEmpty }
+                if !pdfs.isEmpty {
+                    Menu {
+                        ForEach(pdfs.sorted { $0.datum < $1.datum }) { dokument in
+                            Button(dokument.titel) { kartenPerKI(dokument) }
+                        }
+                    } label: {
+                        HStack {
+                            Text(kiLaeuft ? "Karten werden erzeugt …" : "Karten aus Vorlesung erzeugen (KI) …").font(Thema.ui(14))
+                            Spacer()
+                            Image(systemName: "sparkles").font(.system(size: 12))
+                        }
+                        .foregroundStyle(Thema.tinte)
+                        .padding(.vertical, 14)
+                        .contentShape(Rectangle())
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .menuIndicator(.hidden)
+                    .disabled(kiLaeuft)
+                    .overlay(alignment: .bottom) { Haarlinie() }
+                }
                 aktion("Als Anki-Paket exportieren (.apkg)") { ankiExport() }
                     .disabled(karten.isEmpty)
                 aktion("Als CSV exportieren") { csvExport() }
@@ -162,7 +185,7 @@ struct QuizKartenAnsicht: View {
                         .foregroundStyle(Thema.tinteSekundaer)
                         .padding(.top, 12)
                 }
-                Text("Automatisch erzeugte Karten aus Vorlesungen und Zusammenfassungen erstellt der KI-Tutor ab Ausbaustufe e.")
+                Text("Die KI erzeugt Frage/Antwort-, Lückentext- und Multiple-Choice-Karten; prüfungsrelevante werden markiert. Alle Karten bleiben bearbeitbar.")
                     .font(Thema.ui(11))
                     .foregroundStyle(Thema.tinteTertiaer)
                     .padding(.top, 12)
@@ -208,6 +231,24 @@ struct QuizKartenAnsicht: View {
             zeigeExport = true
         } catch {
             meldung = "Das Anki-Paket konnte nicht erstellt werden."
+        }
+    }
+
+    private func kartenPerKI(_ dokument: Dokument) {
+        guard KI.istEingerichtet else {
+            meldung = KIFehler.keinSchluessel.errorDescription
+            return
+        }
+        kiLaeuft = true
+        meldung = nil
+        Task {
+            do {
+                let anzahl = try await VorlesungsKI.kartenErzeugen(dokument, kontext: kontext)
+                meldung = "\(anzahl) Karten aus „\(dokument.titel)“ erstellt."
+            } catch {
+                meldung = error.localizedDescription
+            }
+            kiLaeuft = false
         }
     }
 

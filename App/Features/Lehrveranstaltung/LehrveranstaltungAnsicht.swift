@@ -81,8 +81,8 @@ struct LehrveranstaltungAnsicht: View {
             PruefungsvorbereitungAnsicht(lv: lv)
                 .padding(.horizontal, rand)
         case .tutor:
-            FolgtInStufe(titel: "Tutor", symbol: "bubble.left.and.text.bubble.right",
-                         beschreibung: "Der KI-Nachhilfelehrer mit „Nur meine Unterlagen“, Erklärmodi und Wirkstoff-Steckbriefen folgt in Ausbaustufe e.")
+            TutorAnsicht(lv: lv, oeffnen: oeffnen)
+                .padding(.horizontal, rand)
         case .quiz:
             QuizKartenAnsicht(lv: lv)
                 .padding(.horizontal, rand)

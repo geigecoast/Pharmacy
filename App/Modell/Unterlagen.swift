@@ -37,6 +37,9 @@ final class Dokument {
     @Relationship(deleteRule: .nullify, inverse: \Karteikarte.dokument)
     var karteikarten: [Karteikarte]? = []
 
+    @Relationship(deleteRule: .cascade, inverse: \Zusammenfassung.dokument)
+    var zusammenfassungen: [Zusammenfassung]? = []
+
     init(titel: String, dateiname: String, typ: DokumentTyp, daten: Data?) {
         self.titel = titel
         self.dateiname = dateiname

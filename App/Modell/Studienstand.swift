@@ -43,6 +43,7 @@ enum EinstellungsSchluessel {
     static let erscheinungsbild = "erscheinungsbild"
     static let lernstartMinuten = "lernstartMinuten"
     static let lvTab = "lvTab"
+    static let kiModell = "kiModell"
 
     // Lernplan
     static let lernzeiten = "lernzeitenWoche"

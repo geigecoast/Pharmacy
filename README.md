@@ -44,7 +44,7 @@ swift test --package-path Packages/PharmaCore
 - [x] (b) Kalender + Lernplan
 - [x] (c) Vorlesungen + Annotation
 - [x] (d) Karteikarten + FSRS + Quiz
-- [ ] (e) Tutor
+- [x] (e) Tutor
 - [ ] (f) Altklausuren-Analyse + Probeklausuren
 - [ ] (g) Analysen + Dashboard
 - [ ] (h) Gamification
