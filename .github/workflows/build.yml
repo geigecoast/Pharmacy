@@ -14,7 +14,7 @@ jobs:
     name: PharmaCore-Tests
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Xcode-Version
         run: xcodebuild -version
       - name: Tests ausführen
@@ -34,7 +34,7 @@ jobs:
             destination: "generic/platform=iOS Simulator"
             sdk: iphonesimulator
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: XcodeGen installieren
         run: brew install xcodegen
       - name: Projekt erzeugen
@@ -68,7 +68,7 @@ jobs:
           echo "Keine Warnungen."
       - name: Build-Log sichern
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: build-log-${{ matrix.name }}
           path: build.log
@@ -84,7 +84,7 @@ jobs:
           - name: macOS
           - name: iPad
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: XcodeGen installieren
         run: brew install xcodegen
       - name: Projekt erzeugen
@@ -143,7 +143,7 @@ jobs:
           kill $PID || true
       - name: Bildschirmfotos hochladen
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bildschirmfotos-${{ matrix.name }}
           path: bildschirmfotos
