@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Menüleisten-Befehle und Tastenkürzel (Mac und iPad mit Tastatur).
 struct AppBefehle: Commands {
-    @FocusedValue(\.navigationsAuswahl) private var auswahl
+    @FocusedValue(\.navigationsAuswahl) private var auswahl: Binding<Bereich?>?
 
     var body: some Commands {
         CommandMenu("Gehe zu") {
