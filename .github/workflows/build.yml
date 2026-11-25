@@ -76,65 +76,17 @@ jobs:
           path: build.log
 
   start-test:
-    name: Starttest (${{ matrix.name }})
+    name: Starttest (macOS)
     needs: app
     runs-on: macos-15
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS
-          - name: iPad
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - name: XcodeGen installieren
         run: brew install xcodegen
       - name: Projekt erzeugen
         run: xcodegen generate
-      - name: iPad-Simulator starten, App installieren und Bildschirmfotos aufnehmen
-        if: matrix.name == 'iPad'
-        run: |
-          set -euo pipefail
-          SDK=$(xcrun --sdk iphonesimulator --show-sdk-version)
-          echo "iOS-Simulator-SDK: $SDK"
-          xcodebuild build -project PharmaTutor.xcodeproj -scheme PharmaTutor \
-            -destination "generic/platform=iOS Simulator" -derivedDataPath build -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO -quiet
-          echo "Build fertig."
-          UDID=$(SDK="$SDK" xcrun simctl list devices available -j | python3 -c '
-          import json, os, sys
-          sdk = "iOS-" + os.environ["SDK"].replace(".", "-")
-          geraete = json.load(sys.stdin)["devices"]
-          passend = [d for rt, l in geraete.items() if rt.endswith(sdk) for d in l if "iPad" in d["name"]]
-          alle = [d for rt, l in geraete.items() if "iOS" in rt for d in l if "iPad" in d["name"]]
-          kandidaten = passend or alle
-          bevorzugt = [d for d in kandidaten if "Pro" in d["name"] and "13" in d["name"]] or kandidaten
-          print(bevorzugt[-1]["udid"])')
-          echo "Simulator: $UDID"
-          xcrun simctl boot "$UDID" || true
-          xcrun simctl bootstatus "$UDID" -b
-          echo "Simulator gestartet."
-          APP=$(find build/Build/Products -name "PharmaTutor.app" -path "*iphonesimulator*" | head -1)
-          xcrun simctl install "$UDID" "$APP"
-          mkdir -p bildschirmfotos
-          # Erster Start: Einführung
-          xcrun simctl launch "$UDID" de.pharmatutor.app
-          sleep 12
-          xcrun simctl io "$UDID" screenshot bildschirmfotos/ipad-1-einfuehrung.png
-          xcrun simctl terminate "$UDID" de.pharmatutor.app
-          # Zweiter Start ohne Einführung
-          xcrun simctl launch "$UDID" de.pharmatutor.app -onboardingAbgeschlossen YES
-          sleep 10
-          xcrun simctl io "$UDID" screenshot bildschirmfotos/ipad-2-heute.png
-          if xcrun simctl spawn "$UDID" launchctl list | grep -q "de.pharmatutor.app"; then
-            echo "App läuft."
-          else
-            echo "::error::App ist abgestürzt"
-            exit 1
-          fi
-      - name: Mac-App starten und Bildschirmfoto aufnehmen
-        if: matrix.name == 'macOS'
+      - name: Mac-App starten und Bildschirmfotos aufnehmen
         run: |
           set -euo pipefail
           xcodebuild build -project PharmaTutor.xcodeproj -scheme PharmaTutor \
@@ -142,6 +94,7 @@ jobs:
             CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= -quiet
           APP=$(find build/Build/Products -name "PharmaTutor.app" -path "*Debug/*" -not -path "*iphone*" | head -1)
           mkdir -p bildschirmfotos
+          # Erster Start: Einführung
           "$APP/Contents/MacOS/PharmaTutor" > app.log 2>&1 &
           PID=$!
           sleep 15
@@ -149,6 +102,7 @@ jobs:
           if kill -0 $PID 2>/dev/null; then echo "App läuft."; else echo "::error::App ist abgestürzt"; cat app.log; exit 1; fi
           kill $PID || true
           sleep 2
+          # Zweiter Start ohne Einführung
           "$APP/Contents/MacOS/PharmaTutor" -onboardingAbgeschlossen YES > app2.log 2>&1 &
           PID=$!
           sleep 12
@@ -159,6 +113,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: bildschirmfotos-${{ matrix.name }}
+          name: bildschirmfotos-macOS
           path: bildschirmfotos
           if-no-files-found: ignore

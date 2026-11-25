@@ -30,7 +30,7 @@ Danach in Xcode unter *Signing & Capabilities* dein (kostenloses) Personal Team 
 | `App/Modell/` | SwiftData-Modelle, Seed des Curriculums, Studienstand |
 | `App/Features/` | Bildschirme (Heute, Semester, Lehrveranstaltung, Voraussetzungen, Staatsexamen, Einstellungen, Einführung) |
 | `Packages/PharmaCore/` | Reine Fachlogik ohne UI: Stammdaten, Curriculum, Voraussetzungsregeln, Fristen – mit Tests |
-| `.github/workflows/build.yml` | CI: Tests, Build für macOS und iPad-Simulator (Warnungen = Fehler), Starttest mit Bildschirmfotos |
+| `.github/workflows/build.yml` | CI: Tests, Build für macOS und iPad-Simulator (Warnungen = Fehler), Starttest der Mac-App mit Bildschirmfotos |
 
 ## Tests
 
