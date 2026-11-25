@@ -3,31 +3,24 @@ import SwiftData
 
 @main
 struct PharmaTutorApp: App {
-    private let container: ModelContainer?
-    private let fehlertext: String?
+    @State private var speicher: Datenspeicher
 
     init() {
         Thema.schriftenRegistrieren()
-        do {
-            let schema = Schema(Datenschema.modelle)
-            let konfiguration = ModelConfiguration(schema: schema, cloudKitDatabase: .none)
-            container = try ModelContainer(for: schema, configurations: [konfiguration])
-            fehlertext = nil
-        } catch {
-            container = nil
-            fehlertext = error.localizedDescription
-        }
+        _speicher = State(initialValue: Datenspeicher())
     }
 
     var body: some Scene {
         WindowGroup {
-            if let container {
+            if let container = speicher.container {
                 HauptAnsicht()
+                    .id(speicher.generation)
                     .modelContainer(container)
+                    .environment(speicher)
                     .environment(\.locale, .deutsch)
                     .erscheinungsbild()
             } else {
-                DatenbankFehlerAnsicht(details: fehlertext)
+                DatenbankFehlerAnsicht(details: speicher.fehlertext)
             }
         }
         #if os(macOS)
@@ -40,18 +33,22 @@ struct PharmaTutorApp: App {
         }
 
         WindowGroup("Lehrveranstaltung", id: LVFenster.fensterID, for: PersistentIdentifier.self) { $id in
-            if let container {
+            if let container = speicher.container {
                 LVFenster(id: id)
+                    .id(speicher.generation)
                     .modelContainer(container)
+                    .environment(speicher)
                     .environment(\.locale, .deutsch)
                     .erscheinungsbild()
             }
         }
 
         WindowGroup("Unterlage", id: DokumentFenster.fensterID, for: PersistentIdentifier.self) { $id in
-            if let container {
+            if let container = speicher.container {
                 DokumentFenster(id: id)
+                    .id(speicher.generation)
                     .modelContainer(container)
+                    .environment(speicher)
                     .environment(\.locale, .deutsch)
                     .erscheinungsbild()
             }
@@ -59,12 +56,14 @@ struct PharmaTutorApp: App {
 
         #if os(macOS)
         Settings {
-            if let container {
+            if let container = speicher.container {
                 NavigationStack {
                     EinstellungenAnsicht()
                 }
+                .id(speicher.generation)
                 .frame(minWidth: 520, idealWidth: 560, minHeight: 560)
                 .modelContainer(container)
+                .environment(speicher)
                 .environment(\.locale, .deutsch)
             }
         }

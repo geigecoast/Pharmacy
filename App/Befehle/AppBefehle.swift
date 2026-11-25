@@ -18,6 +18,9 @@ struct AppBefehle: Commands {
             Button("Voraussetzungen") { auswahl?.wrappedValue = .voraussetzungen }
                 .keyboardShortcut("4", modifiers: .command)
                 .disabled(auswahl == nil)
+            Button("Erfolge") { auswahl?.wrappedValue = .erfolge }
+                .keyboardShortcut("5", modifiers: .command)
+                .disabled(auswahl == nil)
             Divider()
             Button("Einstellungen") { auswahl?.wrappedValue = .einstellungen }
                 .keyboardShortcut("0", modifiers: .command)

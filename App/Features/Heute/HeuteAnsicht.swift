@@ -64,20 +64,16 @@ struct HeuteAnsicht: View {
     /// Tagesziel für Lernserie und Wochenleiste (ohne Gamification: jede Lernminute zählt).
     private var tagesziel: Int { gamificationAktiv ? GamificationDienst.tagesziel : 1 }
 
-    /// Tage mit erreichtem Tagesziel (Lerneinheiten, Fokus-Timer, Karten, Quiz).
-    private var lerntage: Set<Date> {
-        _ = alleSitzungen.count
-        let grenze = Double(tagesziel)
-        return Set(AnalyseDienst.lernminuten(lv: nil, kontext: kontext).filter { $0.value >= grenze }.keys)
-    }
-
-    /// Lernserie (heute darf noch offen sein; optional ein Ruhetag pro Woche).
-    private var lernserie: Int {
+    /// Lernserie und Tage mit erreichtem Tagesziel – einmal berechnet
+    /// (Lerneinheiten, Fokus-Timer, Karten, Quiz; ohne Gamification zählt jede Lernminute).
+    private var lernstand: (serie: Int, tage: Set<Date>) {
         _ = alleSitzungen.count
         let minuten = AnalyseDienst.lernminuten(lv: nil, kontext: kontext)
-        return Gamification.serie(minutenProTag: minuten, tagesziel: tagesziel,
-                                  ruhetagErlaubt: gamificationAktiv && GamificationDienst.ruhetagErlaubt,
-                                  heute: Date(), kalender: kalender).aktuell
+        let grenze = Double(tagesziel)
+        let serie = Gamification.serie(minutenProTag: minuten, tagesziel: tagesziel,
+                                       ruhetagErlaubt: gamificationAktiv && GamificationDienst.ruhetagErlaubt,
+                                       heute: Date(), kalender: kalender).aktuell
+        return (serie, Set(minuten.filter { $0.value >= grenze }.keys))
     }
 
     private func bereitschaft(_ tp: Teilpruefung) -> Double {
@@ -303,6 +299,7 @@ struct HeuteAnsicht: View {
 
             Haarlinie().padding(.vertical, 28)
 
+            let heute = lernstand
             HStack(alignment: .top) {
                 Button {
                     zeigeWiederholung = true
@@ -317,14 +314,14 @@ struct HeuteAnsicht: View {
                 .buttonStyle(.plain)
                 .help("Fällige Karten aller Lehrveranstaltungen wiederholen")
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(verbatim: "\(lernserie)").font(Thema.display(40))
-                    Text(lernserie == 1 ? "Tag Lernserie" : "Tage Lernserie").font(Thema.ui(13)).foregroundStyle(Thema.tinteSekundaer)
+                    Text(verbatim: "\(heute.serie)").font(Thema.display(40))
+                    Text(heute.serie == 1 ? "Tag Lernserie" : "Tage Lernserie").font(Thema.ui(13)).foregroundStyle(Thema.tinteSekundaer)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .foregroundStyle(Thema.tinte)
 
-            Wochenleiste(lerntage: lerntage, kalender: kalender)
+            Wochenleiste(lerntage: heute.tage, kalender: kalender)
                 .padding(.top, 28)
 
             if gamificationAktiv {

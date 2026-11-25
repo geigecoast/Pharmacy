@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 import PharmaCore
 
 struct EinstellungenAnsicht: View {
@@ -27,6 +28,17 @@ struct EinstellungenAnsicht: View {
     @State private var erinnerungsHinweis: String?
     @State private var kalenderMeldung: String?
     @State private var kalenderLaeuft = false
+
+    // Abgleich und Sicherung
+    @Environment(Datenspeicher.self) private var speicher
+    private enum ImportZiel { case ordner, sicherung }
+    @State private var importZiel: ImportZiel?
+    @State private var sicherungsDatei: ExportDatei?
+    @State private var wiederherstellenDaten: Data?
+    @State private var abgleichMeldung: String?
+    @State private var abgleichLaeuft = false
+    @State private var zeigeLizenz = false
+    private var abgleich: AbgleichDienst { AbgleichDienst.shared }
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -176,11 +188,9 @@ struct EinstellungenAnsicht: View {
                             .foregroundStyle(Thema.tinteSekundaer)
                             .padding(.top, 12)
                     }
-                    Wertzeile(titel: "Synchronisierung") {
-                        Text("Nur dieses Gerät")
-                            .help("Die Synchronisierung zwischen Mac und iPad folgt in Ausbaustufe i.")
-                    }
                 }
+
+                abgleichGruppe
 
                 gruppe("Daten") {
                     Wertzeile(titel: "Einführung") {
@@ -197,7 +207,12 @@ struct EinstellungenAnsicht: View {
                     Wertzeile(titel: "Version") {
                         Text(verbatim: version)
                     }
-                    Text("Alle Daten bleiben lokal auf diesem Gerät. An die KI gehen nur Inhalte, die du ausdrücklich auswählst.")
+                    Wertzeile(titel: "Schriften") {
+                        Button("Geist, Newsreader · Lizenz") { zeigeLizenz = true }
+                            .buttonStyle(.plain)
+                            .underline()
+                    }
+                    Text("Alle Daten bleiben auf deinen Geräten – beim Abgleich nur in dem Ordner, den du auswählst. An die KI gehen nur Inhalte, die du ausdrücklich auswählst.")
                         .font(Thema.ui(12))
                         .foregroundStyle(Thema.tinteTertiaer)
                         .padding(.top, 12)
@@ -227,6 +242,9 @@ struct EinstellungenAnsicht: View {
         }
         .onChange(of: taeglich) { _, _ in Task { await ErinnerungsDienst.planen(kontext) } }
         .onChange(of: erinnerungUm) { _, _ in Task { await ErinnerungsDienst.planen(kontext) } }
+        .sheet(isPresented: $zeigeLizenz) {
+            LizenzAnsicht()
+        }
         .sheet(isPresented: $zeigeLernzeiten) {
             LernzeitenAnsicht()
         }
@@ -249,6 +267,35 @@ struct EinstellungenAnsicht: View {
             .frame(minWidth: 460, minHeight: 300)
             #endif
         }
+        .fileImporter(isPresented: Binding(get: { importZiel != nil }, set: { if !$0 { importZiel = nil } }),
+                      allowedContentTypes: importZiel == .ordner ? [.folder] : [.pharmatutorSicherung, .data]) { ergebnis in
+            let ziel = importZiel
+            importZiel = nil
+            guard case .success(let url) = ergebnis else { return }
+            if ziel == .ordner {
+                ordnerGewaehlt(url)
+            } else {
+                sicherungGewaehlt(url)
+            }
+        }
+        .fileExporter(isPresented: Binding(get: { sicherungsDatei != nil }, set: { if !$0 { sicherungsDatei = nil } }),
+                      document: sicherungsDatei, contentType: .pharmatutorSicherung,
+                      defaultFilename: "PharmaTutor-Sicherung-\(Date().formatted(.iso8601.year().month().day()))") { ergebnis in
+            if case .failure(let fehler) = ergebnis {
+                abgleichMeldung = fehler.localizedDescription
+            } else {
+                abgleichMeldung = "Sicherung gespeichert."
+            }
+        }
+        .confirmationDialog("Sicherung wiederherstellen?", isPresented: Binding(
+            get: { wiederherstellenDaten != nil },
+            set: { if !$0 { wiederherstellenDaten = nil } }
+        ), titleVisibility: .visible) {
+            Button("Wiederherstellen", role: .destructive) { wiederherstellen() }
+            Button("Abbrechen", role: .cancel) {}
+        } message: {
+            Text("Alle Daten auf diesem Gerät werden durch die Sicherung ersetzt.")
+        }
         .confirmationDialog("Curriculum zurücksetzen?", isPresented: $zeigeZuruecksetzen, titleVisibility: .visible) {
             Button("Zurücksetzen", role: .destructive) {
                 Seeder.zuruecksetzen(kontext)
@@ -256,6 +303,123 @@ struct EinstellungenAnsicht: View {
             Button("Abbrechen", role: .cancel) {}
         } message: {
             Text("Alle Lehrveranstaltungen, Teilprüfungen, Fristen, Lerneinheiten und Unterlagen werden gelöscht und das vorgeladene Curriculum neu geladen.")
+        }
+    }
+
+    // MARK: Abgleich und Sicherung
+
+    private var abgleichGruppe: some View {
+        gruppe("Abgleich & Sicherung") {
+            Wertzeile(titel: "Abgleichsordner") {
+                Button(abgleich.ordnerName.map { "„\($0)“" } ?? "Auswählen …") { importZiel = .ordner }
+                    .buttonStyle(.plain)
+                    .underline()
+            }
+            if abgleich.istEingerichtet {
+                Wertzeile(titel: "Letzter Abgleich") {
+                    HStack(spacing: 12) {
+                        if abgleichLaeuft { ProgressView().controlSize(.small) }
+                        Text(verbatim: abgleich.letzterAbgleich.map {
+                            $0.formatted(.dateTime.day().month(.abbreviated).hour().minute().locale(.deutsch))
+                        } ?? "noch nie")
+                        Button("Jetzt abgleichen") { jetztAbgleichen() }
+                            .buttonStyle(.plain)
+                            .underline()
+                            .disabled(abgleichLaeuft)
+                    }
+                }
+                Wertzeile(titel: "Abgleich beenden") {
+                    Button("Ordner entfernen") {
+                        abgleich.ordnerEntfernen()
+                        abgleichMeldung = nil
+                    }
+                    .buttonStyle(.plain)
+                    .underline()
+                }
+            }
+            Wertzeile(titel: "Sicherung") {
+                HStack(spacing: 16) {
+                    Button("Erstellen …") { sicherungErstellen() }
+                        .buttonStyle(.plain)
+                        .underline()
+                    Button("Wiederherstellen …") { importZiel = .sicherung }
+                        .buttonStyle(.plain)
+                        .underline()
+                }
+            }
+            if let abgleichMeldung {
+                Text(verbatim: abgleichMeldung)
+                    .font(Thema.ui(12))
+                    .foregroundStyle(Thema.tinteSekundaer)
+                    .padding(.top, 12)
+            }
+            Text("Wähle auf Mac und iPad denselben Ordner, z. B. in iCloud Drive oder Google Drive. PharmaTutor legt dort beim Verlassen der App den aktuellen Stand ab und bietet ihn auf dem anderen Gerät zur Übernahme an. Änderungen auf beiden Geräten werden nicht zusammengeführt – dann entscheidest du, welcher Stand gilt. Eine Sicherung enthält alle Daten einschließlich Unterlagen.")
+                .font(Thema.ui(12))
+                .foregroundStyle(Thema.tinteTertiaer)
+                .lineSpacing(3)
+                .padding(.top, 12)
+        }
+    }
+
+    private func ordnerGewaehlt(_ url: URL) {
+        do {
+            try abgleich.ordnerFestlegen(url)
+            jetztAbgleichen()
+        } catch {
+            abgleichMeldung = "Der Ordner konnte nicht gespeichert werden: \(error.localizedDescription)"
+        }
+    }
+
+    /// Prüft zuerst auf einen neueren Stand des anderen Geräts, sonst wird der eigene abgelegt.
+    private func jetztAbgleichen() {
+        abgleichLaeuft = true
+        defer { abgleichLaeuft = false }
+        switch abgleich.pruefen() {
+        case .uebernehmen(let stand), .konflikt(let stand):
+            abgleichMeldung = "Ein neuerer Stand von „\(stand.geraetName)“ liegt bereit."
+            NotificationCenter.default.post(name: .abgleichPruefen, object: nil)
+        case .neuereVersion(let stand):
+            abgleichMeldung = "„\(stand.geraetName)“ nutzt eine neuere App-Version (\(stand.appVersion)). Bitte aktualisiere PharmaTutor."
+        case .nichts:
+            do {
+                try abgleich.ablegen(kontext: kontext, speicher: speicher.speicherURL)
+                abgleichMeldung = "Aktueller Stand abgelegt."
+            } catch {
+                abgleichMeldung = error.localizedDescription
+            }
+        }
+    }
+
+    private func sicherungErstellen() {
+        do {
+            let stand = Abgleich.Stand(basisID: nil, geraetID: Geraet.id, geraetName: Geraet.name,
+                                       erstelltAm: Date(), appVersion: Geraet.appVersion)
+            let daten = try SicherungsDienst.erstellen(kontext: kontext, speicher: speicher.speicherURL, stand: stand)
+            sicherungsDatei = ExportDatei(daten: daten)
+        } catch {
+            abgleichMeldung = error.localizedDescription
+        }
+    }
+
+    private func sicherungGewaehlt(_ url: URL) {
+        let zugriff = url.startAccessingSecurityScopedResource()
+        defer { if zugriff { url.stopAccessingSecurityScopedResource() } }
+        do {
+            wiederherstellenDaten = try Data(contentsOf: url)
+        } catch {
+            abgleichMeldung = error.localizedDescription
+        }
+    }
+
+    private func wiederherstellen() {
+        guard let daten = wiederherstellenDaten else { return }
+        wiederherstellenDaten = nil
+        do {
+            let ergebnis = try SicherungsDienst.entpacken(daten)
+            abgleich.nachWiederherstellung()
+            try speicher.wechseln(zu: ergebnis.speicher)
+        } catch {
+            abgleichMeldung = error.localizedDescription
         }
     }
 
@@ -351,3 +515,39 @@ struct GoogleDriveHinweis: View {
     }
 }
 
+
+/// Lizenztext der mitgelieferten Schriften (SIL Open Font License).
+struct LizenzAnsicht: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private var text: String {
+        guard let url = Bundle.main.url(forResource: "LIZENZ", withExtension: "txt"),
+              let inhalt = try? String(contentsOf: url, encoding: .utf8) else {
+            return "Geist und Geist Mono (Vercel) sowie Newsreader (Production Type) stehen unter der SIL Open Font License 1.1."
+        }
+        return inhalt
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(verbatim: text)
+                    .font(Thema.mono(11))
+                    .foregroundStyle(Thema.tinte)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(24)
+            }
+            .background(Thema.flaeche)
+            .navigationTitle("Schriftlizenzen")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Fertig") { dismiss() }
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 520, minHeight: 480)
+        #endif
+    }
+}

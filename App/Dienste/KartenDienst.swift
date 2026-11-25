@@ -190,7 +190,7 @@ enum BildOkklusion {
 /// Datei für den Export-Dialog (Anki-Paket oder CSV).
 struct ExportDatei: FileDocument {
     static var readableContentTypes: [UTType] { [.data] }
-    static var writableContentTypes: [UTType] { [.ankiPaket, .commaSeparatedText, .data] }
+    static var writableContentTypes: [UTType] { [.ankiPaket, .commaSeparatedText, .pharmatutorSicherung, .data] }
 
     var daten: Data
 

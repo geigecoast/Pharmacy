@@ -20,7 +20,7 @@ open PharmaTutor.xcodeproj
 
 Danach in Xcode unter *Signing & Capabilities* dein (kostenloses) Personal Team auswählen und als Ziel **My Mac** oder einen **iPad-Simulator** bzw. dein iPad wählen.
 
-> Hinweis: Mit einem kostenlosen Apple-Account laufen selbst installierte Apps auf dem iPad 7 Tage; danach erneut aus Xcode installieren. CloudKit/iCloud-Sync ist ohne bezahlten Developer Account nicht möglich – die Synchronisierung zwischen Mac und iPad wird in Ausbaustufe (i) anders gelöst.
+> Hinweis: Mit einem kostenlosen Apple-Account laufen selbst installierte Apps auf dem iPad 7 Tage; danach erneut aus Xcode installieren. CloudKit/iCloud-Sync ist ohne bezahlten Developer Account nicht möglich – Mac und iPad gleichen sich stattdessen über einen gemeinsamen Ordner ab (Einstellungen → Abgleich & Sicherung).
 
 ## Aufbau
 
@@ -48,4 +48,4 @@ swift test --package-path Packages/PharmaCore
 - [x] (f) Altklausuren-Analyse + Probeklausuren
 - [x] (g) Analysen + Dashboard
 - [x] (h) Gamification: Lernserie mit Tagesziel und Ruhetag, Punkte und Stufen, Abzeichen, Wochenziel, Lernkalender
-- [ ] (i) Sync + Feinschliff
+- [x] (i) Abgleich über einen gemeinsamen Ordner (iCloud Drive, Google Drive), Sicherung und Wiederherstellung, Feinschliff
