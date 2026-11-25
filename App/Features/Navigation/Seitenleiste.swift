@@ -12,6 +12,7 @@ struct Seitenleiste: View {
     @Query(sort: \Semester.sortierung) private var alleSemester: [Semester]
     @Query(sort: \Lehrveranstaltung.lfdNr) private var alleLVs: [Lehrveranstaltung]
     @Query private var alleLerneinheiten: [Lerneinheit]
+    @Query private var alleKarten: [Karteikarte]
     @Query(sort: \Lernpfad.titel) private var lernpfade: [Lernpfad]
     @Environment(\.modelContext) private var kontext
     @Environment(\.openWindow) private var openWindow
@@ -45,8 +46,10 @@ struct Seitenleiste: View {
         alleSemester.first { $0.nummer == semesterNummer } ?? alleSemester.first(where: \.istAktuell)
     }
 
+    /// Offene Lerneinheiten heute plus fällige Karteikarten.
     private var offeneEinheitenHeute: Int {
         alleLerneinheiten.filter { !$0.erledigt && Calendar.current.isDateInToday($0.tag) }.count
+            + KartenDienst.anzahlFaellig(alleKarten)
     }
 
     private func gehe(zu bereich: Bereich) {

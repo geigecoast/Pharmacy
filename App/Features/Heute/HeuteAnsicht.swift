@@ -10,7 +10,9 @@ struct HeuteAnsicht: View {
     @Query private var alleTeilpruefungen: [Teilpruefung]
     @Query private var alleFristen: [Frist]
     @Query private var alleLerneinheiten: [Lerneinheit]
+    @Query private var alleKarten: [Karteikarte]
     @Query(sort: \Semester.sortierung) private var alleSemester: [Semester]
+    @State private var zeigeWiederholung = false
     @AppStorage(EinstellungsSchluessel.vorname) private var vorname = ""
     @AppStorage(EinstellungsSchluessel.lernstartMinuten) private var lernstart = Standardwerte.lernstartMinuten
     @AppStorage(EinstellungsSchluessel.lvTab) private var lvTab: LVTab = .vorlesungen
@@ -94,10 +96,17 @@ struct HeuteAnsicht: View {
     private var zusammenfassung: String {
         var saetze: [String] = []
         let offen = heutigeEinheiten.filter { !$0.erledigt }.count
+        let karten = KartenDienst.anzahlFaellig(alleKarten)
+        let kartenText = karten == 0 ? "" : (karten == 1 ? ", eine fällige Karte" : ", \(karten) fällige Karten")
         switch offen {
-        case 0: saetze.append(heutigeEinheiten.isEmpty ? "Heute ist nichts geplant." : "Alle Lerneinheiten für heute sind erledigt.")
-        case 1: saetze.append("Eine Lerneinheit steht heute an.")
-        default: saetze.append("\(Zahlwort.text(offen, grossAmAnfang: true)) Lerneinheiten stehen heute an.")
+        case 0:
+            if heutigeEinheiten.isEmpty {
+                saetze.append(karten == 0 ? "Heute ist nichts geplant." : "Keine Lerneinheiten\(kartenText).")
+            } else {
+                saetze.append("Alle Lerneinheiten für heute sind erledigt\(karten == 0 ? "" : " – es warten noch \(karten) Karten").")
+            }
+        case 1: saetze.append("Eine Lerneinheit\(kartenText).")
+        default: saetze.append("\(Zahlwort.text(offen, grossAmAnfang: true)) Lerneinheiten\(kartenText).")
         }
         if let tp = anstehend.first, let datum = tp.datum {
             let tage = Countdown.tage(bis: datum)
@@ -132,6 +141,9 @@ struct HeuteAnsicht: View {
         }
         .background(Thema.flaeche)
         .navigationTitle("Heute lernen")
+        .sheet(isPresented: $zeigeWiederholung) {
+            WiederholungsSitzung()
+        }
     }
 
     private var kopf: some View {
@@ -288,12 +300,18 @@ struct HeuteAnsicht: View {
             Haarlinie().padding(.vertical, 28)
 
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(verbatim: "–").font(Thema.display(40))
-                    Text("Karten fällig").font(Thema.ui(13)).foregroundStyle(Thema.tinteSekundaer)
+                Button {
+                    zeigeWiederholung = true
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(verbatim: "\(KartenDienst.anzahlFaellig(alleKarten))").font(Thema.display(40))
+                        Text("Karten fällig").font(Thema.ui(13)).foregroundStyle(Thema.tinteSekundaer)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .help("Karteikarten folgen in Ausbaustufe d")
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
+                .help("Fällige Karten aller Lehrveranstaltungen wiederholen")
                 VStack(alignment: .leading, spacing: 4) {
                     Text(verbatim: "\(lernserie)").font(Thema.display(40))
                     Text(lernserie == 1 ? "Tag Lernserie" : "Tage Lernserie").font(Thema.ui(13)).foregroundStyle(Thema.tinteSekundaer)

@@ -81,6 +81,15 @@ final class Lehrveranstaltung {
     @Relationship(deleteRule: .cascade, inverse: \Dokument.lehrveranstaltung)
     var dokumente: [Dokument]? = []
 
+    @Relationship(deleteRule: .cascade, inverse: \Karteikarte.lehrveranstaltung)
+    var karteikarten: [Karteikarte]? = []
+
+    @Relationship(deleteRule: .cascade, inverse: \Fehlereintrag.lehrveranstaltung)
+    var fehlereintraege: [Fehlereintrag]? = []
+
+    @Relationship(deleteRule: .cascade, inverse: \QuizErgebnis.lehrveranstaltung)
+    var quizErgebnisse: [QuizErgebnis]? = []
+
     init(lfdNr: String, bezeichnung: String, lehrform: Lehrform = .v, sws: String = "", sortierung: Int = 0) {
         self.lfdNr = lfdNr
         self.bezeichnung = bezeichnung
@@ -305,5 +314,9 @@ enum Datenschema {
         Seite.self,
         Markierung.self,
         Zeichnung.self,
+        Karteikarte.self,
+        Wiederholung.self,
+        Fehlereintrag.self,
+        QuizErgebnis.self,
     ]
 }

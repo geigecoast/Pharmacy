@@ -34,6 +34,9 @@ final class Dokument {
     @Relationship(deleteRule: .cascade, inverse: \Zeichnung.dokument)
     var zeichnungen: [Zeichnung]? = []
 
+    @Relationship(deleteRule: .nullify, inverse: \Karteikarte.dokument)
+    var karteikarten: [Karteikarte]? = []
+
     init(titel: String, dateiname: String, typ: DokumentTyp, daten: Data?) {
         self.titel = titel
         self.dateiname = dateiname

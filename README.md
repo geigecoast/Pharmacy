@@ -43,7 +43,7 @@ swift test --package-path Packages/PharmaCore
 - [x] (a) App-Gerüst, Semester-Navigation, Datenmodell, Curriculum
 - [x] (b) Kalender + Lernplan
 - [x] (c) Vorlesungen + Annotation
-- [ ] (d) Karteikarten + FSRS + Quiz
+- [x] (d) Karteikarten + FSRS + Quiz
 - [ ] (e) Tutor
 - [ ] (f) Altklausuren-Analyse + Probeklausuren
 - [ ] (g) Analysen + Dashboard

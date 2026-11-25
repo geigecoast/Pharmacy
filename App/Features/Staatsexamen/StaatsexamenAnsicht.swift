@@ -7,6 +7,8 @@ struct StaatsexamenAnsicht: View {
     @Query private var zuordnungen: [StoffgebietZuordnung]
     @Query(sort: \Lernpfad.titel) private var lernpfade: [Lernpfad]
     @Query private var alleLVs: [Lehrveranstaltung]
+    @Query private var alleKarten: [Karteikarte]
+    @State private var quizModus: QuizModus?
 
     private var sortierteZuordnungen: [StoffgebietZuordnung] {
         zuordnungen.sorted { $0.code < $1.code }
@@ -48,11 +50,31 @@ struct StaatsexamenAnsicht: View {
                 }
 
                 VStack(alignment: .leading, spacing: 0) {
-                    Abschnittstitel("IMPP-Altfragen")
-                    Text("Der IMPP-Altfragen-Modus und die Simulation der mündlichen Prüfung folgen in den Ausbaustufen d und e.")
+                    let mc = alleKarten.filter { $0.typ == .multipleChoice && $0.istGueltig }
+                    Abschnittstitel(titel: "IMPP-Altfragen") {
+                        Text("\(mc.filter(\.istIMPP).count) Altfragen · \(mc.count) MC-Karten")
+                    }
+                    Text("Übe alle Multiple-Choice-Karten aller Semester im IMPP-Stil – Altfragen zuerst. Altfragen legst du als MC-Karte mit „IMPP-Altfrage“ an.")
                         .font(Thema.ui(14))
                         .foregroundStyle(Thema.tinteSekundaer)
                         .padding(.vertical, 18)
+                    HStack(spacing: 16) {
+                        Aktionskarte(titel: "IMPP-Modus starten", untertitel: "Multiple Choice · alle Stoffgebiete") {
+                            quizModus = .impp
+                        }
+                        .disabled(mc.isEmpty)
+                        .opacity(mc.isEmpty ? 0.4 : 1)
+                        Aktionskarte(titel: "Prüfungssimulation", untertitel: "90 min · gemischt") {
+                            quizModus = .pruefungssimulation
+                        }
+                        .disabled(alleKarten.isEmpty)
+                        .opacity(alleKarten.isEmpty ? 0.4 : 1)
+                    }
+                    .frame(maxWidth: 720)
+                    Text("Die Simulation der mündlichen Prüfung folgt mit dem KI-Tutor in Ausbaustufe e.")
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteTertiaer)
+                        .padding(.top, 14)
                 }
             }
             .frame(maxWidth: 980, alignment: .leading)
@@ -60,6 +82,9 @@ struct StaatsexamenAnsicht: View {
         }
         .background(Thema.flaeche)
         .navigationTitle("Staatsexamen")
+        .sheet(item: $quizModus) { modus in
+            QuizSitzung(modus: modus, pool: alleKarten)
+        }
     }
 
     private func fachZeile(_ fach: StaatsexamenFach) -> some View {

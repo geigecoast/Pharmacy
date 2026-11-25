@@ -25,11 +25,16 @@ struct DashboardAnsicht: View {
         }
     }
 
-    /// Vorläufiger Lernstand: Anteil bestandener Lehrveranstaltungen des Stoffgebiets.
+    /// Lernstand: mittlere Abrufwahrscheinlichkeit aller Karteikarten des Stoffgebiets (FSRS).
+    /// Ohne gelernte Karten: Anteil bestandener Lehrveranstaltungen.
     private func lernstand(_ gebiet: Stoffgebiet) -> Double {
-        let lvs = alleLVs.filter { $0.stoffgebiete.contains(gebiet) && $0.semester?.typ == .regulaer }
-        guard !lvs.isEmpty else { return 0 }
-        return Double(lvs.filter { $0.status == .bestanden }.count) / Double(lvs.count)
+        let lvs = alleLVs.filter { $0.stoffgebiete.contains(gebiet) && $0.semester?.typ != .staatsexamen }
+        if let ausKarten = KartenDienst.lernstand(lvs.flatMap { $0.karteikarten ?? [] }) {
+            return ausKarten
+        }
+        let regulaer = lvs.filter { $0.semester?.typ == .regulaer }
+        guard !regulaer.isEmpty else { return 0 }
+        return Double(regulaer.filter { $0.status == .bestanden }.count) / Double(regulaer.count)
     }
 
     private var anstehend: [Teilpruefung] {
@@ -106,7 +111,7 @@ struct DashboardAnsicht: View {
                                 }
                             }
                         }
-                        Text("Vorläufig: Anteil bestandener Lehrveranstaltungen. Ab Ausbaustufe d fließen Karteikarten und Quizergebnisse ein.")
+                        Text("Lernstand = mittlere Erinnerungswahrscheinlichkeit deiner Karteikarten (FSRS). Ohne gelernte Karten: Anteil bestandener Lehrveranstaltungen.")
                             .font(Thema.ui(11))
                             .foregroundStyle(Thema.tinteTertiaer)
                     }

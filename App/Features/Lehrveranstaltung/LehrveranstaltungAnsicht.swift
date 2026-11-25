@@ -84,8 +84,8 @@ struct LehrveranstaltungAnsicht: View {
             FolgtInStufe(titel: "Tutor", symbol: "bubble.left.and.text.bubble.right",
                          beschreibung: "Der KI-Nachhilfelehrer mit „Nur meine Unterlagen“, Erklärmodi und Wirkstoff-Steckbriefen folgt in Ausbaustufe e.")
         case .quiz:
-            FolgtInStufe(titel: "Quiz & Karteikarten", symbol: "rectangle.on.rectangle.angled",
-                         beschreibung: "Karteikarten mit FSRS-Wiederholung, Quizmodi und Fehlerjournal folgen in Ausbaustufe d.")
+            QuizKartenAnsicht(lv: lv)
+                .padding(.horizontal, rand)
         case .analysen:
             FolgtInStufe(titel: "Analysen", symbol: "chart.pie",
                          beschreibung: "Beherrschung je Thema, Prüfungsbereitschaft und Lernzeit folgen in Ausbaustufe g.")
