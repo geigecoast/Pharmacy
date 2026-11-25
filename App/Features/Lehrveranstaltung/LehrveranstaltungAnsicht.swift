@@ -87,8 +87,8 @@ struct LehrveranstaltungAnsicht: View {
             QuizKartenAnsicht(lv: lv)
                 .padding(.horizontal, rand)
         case .analysen:
-            FolgtInStufe(titel: "Analysen", symbol: "chart.pie",
-                         beschreibung: "Beherrschung je Thema, Prüfungsbereitschaft und Lernzeit folgen in Ausbaustufe g.")
+            AnalysenAnsicht(lv: lv)
+                .padding(.horizontal, rand)
         }
     }
 }

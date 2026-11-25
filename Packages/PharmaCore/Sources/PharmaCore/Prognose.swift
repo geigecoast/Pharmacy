@@ -93,7 +93,10 @@ public enum Prognoserechner {
         let ergebnis: [PrognoseEintrag] = themen.map { s, sammlung in
             let anzahl = sammlung.klausuren.count
             let haeufigkeit = Double(anzahl) / Double(gesamt)
-            let jahre = sammlung.klausuren.compactMap { jahrNachKlausur[$0] ?? nil }
+            let jahre: [Int] = sammlung.klausuren.compactMap { (k: String) -> Int? in
+                guard let eintrag = jahrNachKlausur[k] else { return nil }
+                return eintrag
+            }
             let zuletzt = jahre.max()
             let aktualitaet: Double = {
                 guard anzahl > 0 else { return 0 }

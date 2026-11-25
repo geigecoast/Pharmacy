@@ -99,6 +99,9 @@ final class Lehrveranstaltung {
     @Relationship(deleteRule: .cascade, inverse: \Probeklausur.lehrveranstaltung)
     var probeklausuren: [Probeklausur]? = []
 
+    @Relationship(deleteRule: .nullify, inverse: \Lernsitzung.lehrveranstaltung)
+    var lernsitzungen: [Lernsitzung]? = []
+
     init(lfdNr: String, bezeichnung: String, lehrform: Lehrform = .v, sws: String = "", sortierung: Int = 0) {
         self.lfdNr = lfdNr
         self.bezeichnung = bezeichnung
@@ -333,5 +336,6 @@ enum Datenschema {
         Altklausur.self,
         AltklausurFrage.self,
         Probeklausur.self,
+        Lernsitzung.self,
     ]
 }

@@ -91,6 +91,14 @@ final class VoraussetzungsTests: XCTestCase {
         }
     }
 
+    func testKanten() throws {
+        let kanten53 = try kurs("53").voraussetzungen.kanten
+        XCTAssertEqual(kanten53.map { $0.lfdNr }, ["43", "44", "40"])
+        XCTAssertEqual(kanten53.map { $0.art }, [.alternative, .alternative, .teilpruefung])
+        XCTAssertEqual(try kurs("64").voraussetzungen.kanten.last?.art, .teilnahme)
+        XCTAssertTrue(try kurs("75").voraussetzungen.kanten.allSatisfy { $0.art == .eineDarfFehlen })
+    }
+
     func testBeschreibung() throws {
         XCTAssertEqual(try kurs("63").voraussetzungen.beschreibung, "Zulassung Ph1 + ([43] oder [44])")
         XCTAssertEqual(VoraussetzungsRegel.keine.beschreibung, "Keine Voraussetzungen")

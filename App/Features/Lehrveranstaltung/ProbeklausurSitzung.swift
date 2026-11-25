@@ -327,86 +327,148 @@ struct ProbeklausurSitzung: View {
 
     // MARK: Ergebnis
 
-    private struct ThemenWert: Identifiable {
-        let thema: String
-        let erreicht: Double
-        let gesamt: Double
-        var id: String { thema }
+    private func themenWerte(_ bewertungen: [Int: PKBewertung]) -> [ThemenWert] {
+        var erreicht: [String: Double] = [:]
+        var gesamt: [String: Double] = [:]
+        for frage in fragen {
+            let thema: String = frage.thema.isEmpty ? "Ohne Thema" : frage.thema
+            let punkte: Double = bewertungen[frage.id]?.punkte ?? 0
+            erreicht[thema, default: 0] += punkte
+            gesamt[thema, default: 0] += frage.punkte
+        }
+        var werte: [ThemenWert] = []
+        for (thema, summe) in gesamt {
+            werte.append(ThemenWert(thema: thema, erreicht: erreicht[thema] ?? 0, gesamt: summe))
+        }
+        return werte.sorted { (a: ThemenWert, b: ThemenWert) -> Bool in
+            a.anteil < b.anteil
+        }
     }
 
     @ViewBuilder
     private var ergebnis: some View {
         if let klausur {
-            let bewertungen = klausur.bewertungen
-            let themen = Dictionary(grouping: fragen) { $0.thema.isEmpty ? "Ohne Thema" : $0.thema }
-                .map { thema, liste in
-                    ThemenWert(thema: thema, erreicht: liste.reduce(0) { $0 + (bewertungen[$1.id]?.punkte ?? 0) },
-                               gesamt: liste.reduce(0) { $0 + $1.punkte })
-                }
-                .sorted { $0.erreicht / max($0.gesamt, 1) < $1.erreicht / max($1.gesamt, 1) }
-            VStack(alignment: .leading, spacing: 40) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Kleintitel(text: "Ergebnis")
-                    GrosseZahl(zahl: "\(Dezimal.text(klausur.punkteErreicht, stellen: 1))/\(Dezimal.text(klausur.punkteGesamt, stellen: 1))",
-                               einheit: "Punkte · \(Int(klausur.prozent.rounded())) %", groesse: 64)
-                    Text("Orientierungsnote \(Klausurbewertung.note(prozent: klausur.prozent)) – die tatsächliche Bewertung legt die Prüfung fest.")
-                        .font(Thema.ui(13))
-                        .foregroundStyle(Thema.tinteSekundaer)
-                    if let fehler {
-                        Text(verbatim: fehler).font(Thema.ui(13)).foregroundStyle(Stoffgebiet.i.farbe)
-                    }
-                }
+            ErgebnisAnsicht(klausur: klausur, fragen: fragen, themen: themenWerte(klausur.bewertungen), fehler: fehler)
+        }
+    }
+}
 
-                VStack(alignment: .leading, spacing: 0) {
-                    Abschnittstitel(titel: "Schwächenanalyse") { Text("schwächste Themen zuerst") }
-                    ForEach(themen) { wert in
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text(verbatim: wert.thema).font(Thema.ui(14))
-                                Spacer()
-                                Text(verbatim: "\(Dezimal.text(wert.erreicht, stellen: 1))/\(Dezimal.text(wert.gesamt, stellen: 1))")
-                                    .font(Thema.mono(12)).foregroundStyle(Thema.tinteSekundaer)
-                            }
-                            Fortschrittslinie(wert: wert.gesamt > 0 ? wert.erreicht / wert.gesamt : 0)
-                        }
-                        .padding(.vertical, 14)
-                        .overlay(alignment: .bottom) { Haarlinie() }
-                    }
-                    Text("Schwach beantwortete Fragen stehen jetzt im Fehlerjournal.")
-                        .font(Thema.ui(11))
-                        .foregroundStyle(Thema.tinteTertiaer)
-                        .padding(.top, 10)
-                }
+private struct ThemenWert: Identifiable {
+    let thema: String
+    let erreicht: Double
+    let gesamt: Double
+    var id: String { thema }
+    var anteil: Double { gesamt > 0 ? erreicht / gesamt : 0 }
+}
 
-                VStack(alignment: .leading, spacing: 0) {
-                    Abschnittstitel("Fragen im Einzelnen")
-                    ForEach(fragen) { frage in
-                        let bewertung = bewertungen[frage.id]
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(verbatim: "\(frage.id + 1). \(frage.text)").font(Thema.ui(14)).foregroundStyle(Thema.tinte)
-                                Spacer(minLength: 12)
-                                Text(verbatim: "\(Dezimal.text(bewertung?.punkte ?? 0, stellen: 1))/\(Dezimal.text(frage.punkte, stellen: 1))")
-                                    .font(Thema.mono(12))
-                                    .foregroundStyle((bewertung?.punkte ?? 0) >= frage.punkte ? Thema.tinte : Stoffgebiet.i.farbe)
-                            }
-                            Text(verbatim: "Deine Antwort: \(PruefungsKI.antwortText(frage, klausur.antworten[frage.id] ?? ""))")
-                                .font(Thema.ui(12)).foregroundStyle(Thema.tinteSekundaer)
-                            if let bewertung {
-                                Text(verbatim: bewertung.rueckmeldung).font(Thema.ui(12)).foregroundStyle(Thema.tinte)
-                            }
-                            DisclosureGroup("Musterlösung") {
-                                MarkdownText(text: frage.musterloesung, schrift: Thema.ui(12))
-                                    .padding(.top, 6)
-                            }
-                            .font(Thema.ui(12))
-                            .foregroundStyle(Thema.tinteSekundaer)
-                        }
-                        .padding(.vertical, 16)
-                        .overlay(alignment: .bottom) { Haarlinie() }
-                    }
+private struct ErgebnisAnsicht: View {
+    let klausur: Probeklausur
+    let fragen: [PKFrage]
+    let themen: [ThemenWert]
+    let fehler: String?
+
+    private var punkteText: String {
+        let erreicht: String = Dezimal.text(klausur.punkteErreicht, stellen: 1)
+        let gesamt: String = Dezimal.text(klausur.punkteGesamt, stellen: 1)
+        return "\(erreicht)/\(gesamt)"
+    }
+
+    private var einheitText: String {
+        let prozent: Int = Int(klausur.prozent.rounded())
+        return "Punkte · \(prozent) %"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 40) {
+            VStack(alignment: .leading, spacing: 8) {
+                Kleintitel(text: "Ergebnis")
+                GrosseZahl(zahl: punkteText, einheit: einheitText, groesse: 64)
+                Text("Orientierungsnote \(Klausurbewertung.note(prozent: klausur.prozent)) – die tatsächliche Bewertung legt die Prüfung fest.")
+                    .font(Thema.ui(13))
+                    .foregroundStyle(Thema.tinteSekundaer)
+                if let fehler {
+                    Text(verbatim: fehler).font(Thema.ui(13)).foregroundStyle(Stoffgebiet.i.farbe)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                Abschnittstitel(titel: "Schwächenanalyse") { Text("schwächste Themen zuerst") }
+                ForEach(themen) { wert in
+                    ThemenZeile(wert: wert)
+                }
+                Text("Schwach beantwortete Fragen stehen jetzt im Fehlerjournal.")
+                    .font(Thema.ui(11))
+                    .foregroundStyle(Thema.tinteTertiaer)
+                    .padding(.top, 10)
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                Abschnittstitel("Fragen im Einzelnen")
+                ForEach(fragen) { frage in
+                    FragenAuswertungZeile(frage: frage,
+                                          bewertung: klausur.bewertungen[frage.id],
+                                          antwort: klausur.antworten[frage.id] ?? "")
                 }
             }
         }
+    }
+}
+
+private struct ThemenZeile: View {
+    let wert: ThemenWert
+
+    var body: some View {
+        let text: String = Dezimal.text(wert.erreicht, stellen: 1) + "/" + Dezimal.text(wert.gesamt, stellen: 1)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(verbatim: wert.thema).font(Thema.ui(14))
+                Spacer()
+                Text(verbatim: text)
+                    .font(Thema.mono(12)).foregroundStyle(Thema.tinteSekundaer)
+            }
+            Fortschrittslinie(wert: wert.anteil)
+        }
+        .padding(.vertical, 14)
+        .overlay(alignment: .bottom) { Haarlinie() }
+    }
+}
+
+private struct FragenAuswertungZeile: View {
+    let frage: PKFrage
+    let bewertung: PKBewertung?
+    let antwort: String
+
+    private var erreicht: Double { bewertung?.punkte ?? 0 }
+    private var voll: Bool { erreicht >= frage.punkte }
+    private var punkteText: String {
+        Dezimal.text(erreicht, stellen: 1) + "/" + Dezimal.text(frage.punkte, stellen: 1)
+    }
+    private var titel: String { "\(frage.id + 1). \(frage.text)" }
+    private var antwortText: String { "Deine Antwort: " + PruefungsKI.antwortText(frage, antwort) }
+
+    var body: some View {
+        let farbe: Color = voll ? Thema.tinte : Stoffgebiet.i.farbe
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(verbatim: titel).font(Thema.ui(14)).foregroundStyle(Thema.tinte)
+                Spacer(minLength: 12)
+                Text(verbatim: punkteText)
+                    .font(Thema.mono(12))
+                    .foregroundStyle(farbe)
+            }
+            Text(verbatim: antwortText)
+                .font(Thema.ui(12)).foregroundStyle(Thema.tinteSekundaer)
+            if let bewertung {
+                Text(verbatim: bewertung.rueckmeldung).font(Thema.ui(12)).foregroundStyle(Thema.tinte)
+            }
+            DisclosureGroup("Musterlösung") {
+                MarkdownText(text: frage.musterloesung, schrift: Thema.ui(12))
+                    .padding(.top, 6)
+            }
+            .font(Thema.ui(12))
+            .foregroundStyle(Thema.tinteSekundaer)
+        }
+        .padding(.vertical, 16)
+        .overlay(alignment: .bottom) { Haarlinie() }
     }
 }

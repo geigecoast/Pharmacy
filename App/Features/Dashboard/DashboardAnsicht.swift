@@ -8,6 +8,9 @@ struct DashboardAnsicht: View {
     @Query private var alleLVs: [Lehrveranstaltung]
     @Query private var alleTeilpruefungen: [Teilpruefung]
     @Query private var alleLerneinheiten: [Lerneinheit]
+    @Query(sort: \Semester.sortierung) private var alleSemester: [Semester]
+    @Query private var alleSitzungen: [Lernsitzung]
+    @Environment(\.modelContext) private var kontext
     @AppStorage(EinstellungsSchluessel.lernplanWarnungen) private var warnungen = ""
     @AppStorage(EinstellungsSchluessel.lernzeiten) private var wochenplan: Wochenplan = .standard
 
@@ -46,44 +49,34 @@ struct DashboardAnsicht: View {
         }
     }
 
-    /// Kleinster Abstand zwischen letzter geplanter Lerneinheit und Prüfung (Tage ohne Lernbedarf davor).
-    private var puffer: Int? {
-        let werte = anstehend.compactMap { tp -> Int? in
-            guard let datum = tp.datum else { return nil }
-            let letzte = (tp.lerneinheiten ?? []).filter { !$0.erledigt }.map(\.tag).max()
-            guard let letzte else { return nil }
-            return max(0, Countdown.tage(von: letzte, bis: datum) - 1)
+    /// Restaufwand aller anstehenden Teilprüfungen in Minuten.
+    private var restMinuten: Int {
+        anstehend.reduce(0) { summe, tp in
+            let erledigt = (tp.lerneinheiten ?? []).filter(\.erledigt).reduce(0) { $0 + $1.dauerMinuten }
+            return summe + max(0, tp.lernaufwandMinuten - erledigt)
         }
-        return werte.min()
     }
 
-    private var antwort: String {
-        let liste = warnungen.split(separator: "\n")
-        if anstehend.isEmpty {
-            return "Noch keine Prüfungstermine – trag Termine ein, dann rechnet der Lernplan."
+    private func antwort(_ minuten: [Date: Double]) -> (text: String, reicht: Bool) {
+        guard let letzte = anstehend.compactMap(\.datum).max() else {
+            return ("Noch keine Prüfungstermine – trag Termine ein, dann rechnet der Lernplan.", true)
         }
-        let schnitt = Dauer.text(minuten: wochenplan.summeProWoche / 7)
-        if liste.isEmpty {
-            if let puffer {
-                return "Ja, bei Ø \(schnitt) pro Tag. Puffer: \(puffer) \(puffer == 1 ? "Tag" : "Tage")."
-            }
-            return "Ja, bei Ø \(schnitt) pro Tag."
+        let tempo = AnalyseDienst.tempo(minuten)
+        let geplant = Double(wochenplan.summeProWoche) / 7
+        let basis = tempo >= 15 ? tempo : geplant
+        let prognose = Analyse.zeitprognose(restMinuten: restMinuten, tageBis: max(1, Countdown.tage(bis: letzte)), tempoProTag: basis)
+        let quelle = tempo >= 15 ? "bei deinem Tempo" : "bei deinen geplanten Lernzeiten"
+        if prognose.reicht {
+            return ("Ja, bei \(Dauer.text(minuten: prognose.benoetigtProTag)) pro Tag. Puffer: \(prognose.pufferTage) \(prognose.pufferTage == 1 ? "Tag" : "Tage").", true)
         }
-        return "Knapp: Für \(liste.count) \(liste.count == 1 ? "Prüfung reicht" : "Prüfungen reicht") die Zeit nicht ganz."
+        return ("Noch nicht: nötig wären \(Dauer.text(minuten: prognose.benoetigtProTag)) pro Tag, \(quelle) sind es \(Dauer.text(minuten: Int(basis))).", false)
     }
 
-    /// Erledigte Lernminuten Mo–So der laufenden Woche.
-    private var wochenminuten: [Int] {
-        let start = kalender.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
-        return (0..<7).map { offset in
-            guard let tag = kalender.date(byAdding: .day, value: offset, to: start) else { return 0 }
-            return alleLerneinheiten
-                .filter { $0.erledigt && kalender.isDate($0.erledigtAm ?? $0.tag, inSameDayAs: tag) }
-                .reduce(0) { $0 + $1.dauerMinuten }
-        }
-    }
 
     var body: some View {
+        let minuten = AnalyseDienst.lernminuten(lv: nil, kontext: kontext)
+        let wochenminuten = AnalyseDienst.woche(minuten)
+        let ergebnis = antwort(minuten)
         GeometryReader { geo in
             ScrollView {
                 VStack(alignment: .leading, spacing: 56) {
@@ -123,9 +116,9 @@ struct DashboardAnsicht: View {
                                 .font(Thema.display(26))
                                 .foregroundStyle(Thema.tinte)
                             Spacer(minLength: 16)
-                            Text(verbatim: antwort)
+                            Text(verbatim: ergebnis.text)
                                 .font(Thema.ui(14))
-                                .foregroundStyle(Thema.tinte)
+                                .foregroundStyle(ergebnis.reicht ? Thema.tinte : Stoffgebiet.i.farbe)
                                 .multilineTextAlignment(.trailing)
                         }
                         .padding(.top, 18)
@@ -137,13 +130,26 @@ struct DashboardAnsicht: View {
                         }
                     }
 
+                    semesterFortschritt
+
                     VStack(alignment: .leading, spacing: 0) {
                         Abschnittstitel(titel: "Lernzeit diese Woche") {
-                            Text(verbatim: Dauer.text(minuten: wochenminuten.reduce(0, +)))
+                            Text(verbatim: Analyse.stundenText(wochenminuten.reduce(0, +)))
                         }
                         Wochenbalken(minuten: wochenminuten)
                             .frame(height: 140)
                             .padding(.top, 24)
+                    }
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Abschnittstitel(titel: "Lernzeit je Woche") { Text("letzte 8 Wochen") }
+                        Wochenverlauf(wochen: AnalyseDienst.wochensummen(minuten))
+                            .frame(height: 140)
+                            .padding(.top, 24)
+                        Text("Erfasst aus Fokus-Timer, erledigten Lerneinheiten, Karteikarten, Quiz und Probeklausuren.")
+                            .font(Thema.ui(11))
+                            .foregroundStyle(Thema.tinteTertiaer)
+                            .padding(.top, 12)
                     }
 
                     VStack(alignment: .leading, spacing: 0) {
@@ -172,6 +178,84 @@ struct DashboardAnsicht: View {
         }
         .background(Thema.flaeche)
         .navigationTitle("Dashboard & Analysen")
+        // Neu zeichnen, sobald neue Lernsitzungen (Fokus-Timer) dazukommen
+        .animation(nil, value: alleSitzungen.count)
+    }
+}
+
+extension DashboardAnsicht {
+    /// Fortschrittsringe je Semester (bestandene Lehrveranstaltungen, Kartenlernstand).
+    var semesterFortschritt: some View {
+        let semester = alleSemester.filter { $0.typ == .regulaer && (5...8).contains($0.nummer) }
+        return VStack(alignment: .leading, spacing: 0) {
+            Abschnittstitel("Fortschritt je Semester")
+            HStack(alignment: .top, spacing: 24) {
+                ForEach(semester) { s in
+                    let lvs = s.sortierteLehrveranstaltungen
+                    let bestanden = lvs.filter { $0.status == .bestanden }.count
+                    let anteil = lvs.isEmpty ? 0 : Double(bestanden) / Double(lvs.count)
+                    let karten = KartenDienst.lernstand(lvs.flatMap { $0.karteikarten ?? [] })
+                    Button {
+                        auswahl = .semester(s)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ZStack {
+                                Fortschrittsring(wert: anteil, dicke: 3)
+                                if let karten {
+                                    Fortschrittsring(wert: karten, farbe: Thema.tinteTertiaer, dicke: 2)
+                                        .padding(9)
+                                }
+                                Text(verbatim: "\(Int((anteil * 100).rounded()))%")
+                                    .font(Thema.display(20))
+                                    .foregroundStyle(Thema.tinte)
+                            }
+                            .frame(width: 84, height: 84)
+                            Text(verbatim: s.titel + (s.istAktuell ? " · aktuell" : ""))
+                                .font(Thema.ui(13))
+                                .foregroundStyle(Thema.tinte)
+                            Text(verbatim: "\(bestanden)/\(lvs.count) bestanden" + (karten.map { " · Karten \(Int(($0 * 100).rounded())) %" } ?? ""))
+                                .font(Thema.ui(11))
+                                .foregroundStyle(Thema.tinteSekundaer)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.top, 24)
+        }
+    }
+}
+
+/// Säulen je Woche (älteste links).
+struct Wochenverlauf: View {
+    let wochen: [(beginn: Date, minuten: Int)]
+
+    var body: some View {
+        let maximum = max(wochen.map(\.minuten).max() ?? 0, 60)
+        HStack(alignment: .bottom, spacing: 14) {
+            ForEach(Array(wochen.enumerated()), id: \.offset) { _, woche in
+                VStack(spacing: 8) {
+                    Text(verbatim: woche.minuten > 0 ? Analyse.stundenText(woche.minuten) : "")
+                        .font(Thema.mono(9))
+                        .foregroundStyle(Thema.tinteTertiaer)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    GeometryReader { geo in
+                        VStack {
+                            Spacer(minLength: 0)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(woche.minuten > 0 ? Thema.tinte : Thema.linie)
+                                .frame(height: max(4, geo.size.height * CGFloat(woche.minuten) / CGFloat(maximum)))
+                        }
+                    }
+                    Text(verbatim: "KW \(Calendar.deutsch.component(.weekOfYear, from: woche.beginn))")
+                        .font(Thema.ui(10))
+                        .foregroundStyle(Thema.tinteTertiaer)
+                }
+            }
+        }
     }
 }
 

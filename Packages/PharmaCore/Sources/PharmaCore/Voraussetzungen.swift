@@ -94,6 +94,35 @@ public indirect enum VoraussetzungsRegel: Codable, Hashable, Sendable {
         }
     }
 
+    /// Art einer Kante im Voraussetzungs-Graphen.
+    public enum KantenArt: Sendable, Equatable {
+        /// Muss bestanden sein.
+        case pflicht
+        /// Eine von mehreren Alternativen genügt („[43] oder [44]“).
+        case alternative
+        /// Teilnahme genügt.
+        case teilnahme
+        /// Von mehreren darf eine fehlen.
+        case eineDarfFehlen
+        /// Eine Teilprüfung (z. B. Eingangsprüfung [40]) muss bestanden sein.
+        case teilpruefung
+    }
+
+    /// Alle Kanten (Lfd.-Nr.-Teil → Art) für den Graphen.
+    public var kanten: [(lfdNr: String, art: KantenArt)] {
+        switch self {
+        case .keine, .zulassung: return []
+        case .kurs(let nr): return [(nr.lowercased(), .pflicht)]
+        case .teilnahme(let nr): return [(nr.lowercased(), .teilnahme)]
+        case .teilpruefung(let nr, _): return [(nr.lowercased(), .teilpruefung)]
+        case .alle(let regeln): return regeln.flatMap(\.kanten)
+        case .eine(let regeln):
+            return regeln.flatMap(\.kanten).map { ($0.lfdNr, $0.art == .pflicht ? .alternative : $0.art) }
+        case .hoechstensFehlend(_, let regeln):
+            return regeln.flatMap(\.kanten).map { ($0.lfdNr, .eineDarfFehlen) }
+        }
+    }
+
     // MARK: Prüfung
 
     public func pruefe(_ stand: StudienStand) -> VoraussetzungsPruefung {

@@ -19,6 +19,15 @@ struct VoraussetzungenAnsicht: View {
                     .font(Thema.ui(14))
                     .frame(maxWidth: 420, alignment: .leading)
 
+                VStack(alignment: .leading, spacing: 0) {
+                    Abschnittstitel(titel: "Graph") { Text("Klick öffnet die Lehrveranstaltung") }
+                    VoraussetzungsGraph(semester: alleSemester.filter { $0.typ == .regulaer && (5...8).contains($0.nummer) },
+                                        stand: stand) { lv in
+                        auswahl = .lehrveranstaltung(lv)
+                    }
+                    .padding(.top, 20)
+                }
+
                 ForEach(alleSemester.filter { $0.typ == .regulaer && !($0.lehrveranstaltungen ?? []).isEmpty }) { semester in
                     VStack(alignment: .leading, spacing: 0) {
                         Abschnittstitel(titel: LocalizedStringKey(semester.titel)) { EmptyView() }
@@ -33,11 +42,8 @@ struct VoraussetzungenAnsicht: View {
                         }
                     }
                 }
-                Text("Der grafische Voraussetzungs-Graph folgt in Ausbaustufe g.")
-                    .font(Thema.ui(12))
-                    .foregroundStyle(Thema.tinteTertiaer)
             }
-            .frame(maxWidth: 980, alignment: .leading)
+            .frame(maxWidth: 1200, alignment: .leading)
             .seitenrand()
         }
         .background(Thema.flaeche)

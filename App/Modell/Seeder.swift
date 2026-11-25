@@ -17,6 +17,7 @@ enum Seeder {
     /// Löscht alle Studiendaten und lädt das Curriculum neu.
     static func zuruecksetzen(_ kontext: ModelContext) {
         do {
+            try kontext.delete(model: Lernsitzung.self)
             try kontext.delete(model: AltklausurFrage.self)
             try kontext.delete(model: Altklausur.self)
             try kontext.delete(model: Probeklausur.self)

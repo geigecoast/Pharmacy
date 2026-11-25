@@ -46,6 +46,6 @@ swift test --package-path Packages/PharmaCore
 - [x] (d) Karteikarten + FSRS + Quiz
 - [x] (e) Tutor
 - [x] (f) Altklausuren-Analyse + Probeklausuren
-- [ ] (g) Analysen + Dashboard
+- [x] (g) Analysen + Dashboard
 - [ ] (h) Gamification
 - [ ] (i) Sync + Feinschliff

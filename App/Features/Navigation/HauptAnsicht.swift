@@ -10,7 +10,17 @@ struct HauptAnsicht: View {
     @State private var suche = ""
     @State private var bereit = false
 
+    @State private var fokus = FokusTimer()
     @State private var spalten: NavigationSplitViewVisibility = .all
+
+    /// Lehrveranstaltung der aktuellen Auswahl (für den Fokus-Timer).
+    private var aktuelleLV: Lehrveranstaltung? {
+        switch auswahl {
+        case .lehrveranstaltung(let lv): lv
+        case .dokument(let dokument, _): dokument.lehrveranstaltung
+        default: nil
+        }
+    }
     @State private var kompaktSpalte: NavigationSplitViewColumn = .sidebar
 
     var body: some View {
@@ -22,7 +32,13 @@ struct HauptAnsicht: View {
         } detail: {
             DetailAnsicht(auswahl: $auswahl)
                 .background(Thema.flaeche)
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        FokusKnopf(lv: aktuelleLV)
+                    }
+                }
         }
+        .environment(fokus)
         .searchable(text: $suche, placement: .sidebar, prompt: Text("Suchen, z. B. [43]"))
         .focusedSceneValue(\.navigationsAuswahl, $auswahl)
         .task {

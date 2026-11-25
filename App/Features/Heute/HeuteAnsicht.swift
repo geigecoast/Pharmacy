@@ -57,9 +57,12 @@ struct HeuteAnsicht: View {
             .sorted { ($0.anmeldeschluss ?? .distantFuture) < ($1.anmeldeschluss ?? .distantFuture) }
     }
 
-    /// Tage mit mindestens einer erledigten Lerneinheit.
+    @Query private var alleSitzungen: [Lernsitzung]
+
+    /// Tage mit Lernzeit (Lerneinheiten, Fokus-Timer, Karten, Quiz).
     private var lerntage: Set<Date> {
-        Set(alleLerneinheiten.filter(\.erledigt).map { kalender.startOfDay(for: $0.erledigtAm ?? $0.tag) })
+        _ = alleSitzungen.count
+        return Set(AnalyseDienst.lernminuten(lv: nil, kontext: kontext).filter { $0.value >= 1 }.keys)
     }
 
     /// Lernserie: aufeinanderfolgende Lerntage bis heute (heute darf noch offen sein).

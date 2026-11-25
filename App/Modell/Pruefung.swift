@@ -146,3 +146,16 @@ final class Probeklausur {
 
     var prozent: Double { punkteGesamt > 0 ? punkteErreicht / punkteGesamt * 100 : 0 }
 }
+
+/// Mit dem Fokus-Timer erfasste Lernzeit.
+@Model
+final class Lernsitzung {
+    var start: Date = Date()
+    var dauerSekunden: Double = 0
+    var lehrveranstaltung: Lehrveranstaltung?
+
+    init(start: Date, dauerSekunden: Double) {
+        self.start = start
+        self.dauerSekunden = dauerSekunden
+    }
+}
