@@ -78,7 +78,7 @@ struct LehrveranstaltungAnsicht: View {
         case .vorlesungen:
             VorlesungenAnsicht(lv: lv, oeffnen: oeffnen, rand: rand)
         case .pruefung:
-            PruefungsvorbereitungAnsicht(lv: lv)
+            PruefungsvorbereitungAnsicht(lv: lv, oeffnen: oeffnen)
                 .padding(.horizontal, rand)
         case .tutor:
             TutorAnsicht(lv: lv, oeffnen: oeffnen)

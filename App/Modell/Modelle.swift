@@ -93,6 +93,12 @@ final class Lehrveranstaltung {
     @Relationship(deleteRule: .cascade, inverse: \TutorChat.lehrveranstaltung)
     var tutorChats: [TutorChat]? = []
 
+    @Relationship(deleteRule: .cascade, inverse: \Altklausur.lehrveranstaltung)
+    var altklausuren: [Altklausur]? = []
+
+    @Relationship(deleteRule: .cascade, inverse: \Probeklausur.lehrveranstaltung)
+    var probeklausuren: [Probeklausur]? = []
+
     init(lfdNr: String, bezeichnung: String, lehrform: Lehrform = .v, sws: String = "", sortierung: Int = 0) {
         self.lfdNr = lfdNr
         self.bezeichnung = bezeichnung
@@ -324,5 +330,8 @@ enum Datenschema {
         TutorChat.self,
         TutorNachricht.self,
         Zusammenfassung.self,
+        Altklausur.self,
+        AltklausurFrage.self,
+        Probeklausur.self,
     ]
 }
