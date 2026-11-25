@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import SwiftUI
 import PharmaCore
 
 // Hinweis zum Schema: Alle Eigenschaften haben Standardwerte oder sind optional, Beziehungen sind
@@ -73,6 +74,9 @@ final class Lehrveranstaltung {
     @Relationship(deleteRule: .nullify, inverse: \Frist.lehrveranstaltung)
     var fristen: [Frist]? = []
 
+    @Relationship(deleteRule: .cascade, inverse: \Lerneinheit.lehrveranstaltung)
+    var lerneinheiten: [Lerneinheit]? = []
+
     init(lfdNr: String, bezeichnung: String, lehrform: Lehrform = .v, sws: String = "", sortierung: Int = 0) {
         self.lfdNr = lfdNr
         self.bezeichnung = bezeichnung
@@ -140,8 +144,13 @@ final class Teilpruefung {
     var note: String = ""
     var hinweis: String = ""
     var sortierung: Int = 0
+    /// Eigener Lernaufwand in Stunden; `nil` = Standardwert der Prüfungsart.
+    var lernaufwandStunden: Double?
 
     var lehrveranstaltung: Lehrveranstaltung?
+
+    @Relationship(deleteRule: .cascade, inverse: \Lerneinheit.teilpruefung)
+    var lerneinheiten: [Lerneinheit]? = []
 
     init(typ: TeilpruefungTyp, bezeichnung: String = "", anmeldepflichtig: Bool = false, hinweis: String = "", sortierung: Int = 0) {
         self.typRaw = typ.rawValue
@@ -163,6 +172,54 @@ final class Teilpruefung {
 
     var titel: String {
         bezeichnung.isEmpty ? typ.name : "\(typ.name) – \(bezeichnung)"
+    }
+
+    /// "[43] Schriftliche Abschlussprüfung"
+    var titelMitLfdNr: String {
+        guard let lv = lehrveranstaltung else { return titel }
+        return "\(LfdNr.anzeige(lv.lfdNr)) \(titel)"
+    }
+
+    var effektiverLernaufwandStunden: Double {
+        lernaufwandStunden ?? typ.standardLernaufwandStunden
+    }
+
+    var lernaufwandMinuten: Int { Int((effektiverLernaufwandStunden * 60).rounded()) }
+}
+
+/// Ein Block im Lernplan (automatisch geplant oder selbst angelegt).
+@Model
+final class Lerneinheit {
+    var kennung: UUID = UUID()
+    /// Tagesbeginn des geplanten Tages.
+    var tag: Date = Date()
+    var dauerMinuten: Int = 45
+    var thema: String = ""
+    var erledigt: Bool = false
+    var erledigtAm: Date?
+    /// Selbst angelegt oder verschoben – wird beim Neuplanen nicht überschrieben.
+    var manuell: Bool = false
+
+    var teilpruefung: Teilpruefung?
+    var lehrveranstaltung: Lehrveranstaltung?
+
+    init(tag: Date, dauerMinuten: Int, thema: String, manuell: Bool = false) {
+        self.tag = Calendar.current.startOfDay(for: tag)
+        self.dauerMinuten = dauerMinuten
+        self.thema = thema
+        self.manuell = manuell
+    }
+
+    var farbe: Color { lehrveranstaltung?.farbe ?? .accentColor }
+
+    /// Liegt in der Vergangenheit und wurde nicht erledigt.
+    var verpasst: Bool {
+        !erledigt && tag < Calendar.current.startOfDay(for: Date())
+    }
+
+    func umschalten() {
+        erledigt.toggle()
+        erledigtAm = erledigt ? Date() : nil
     }
 }
 
@@ -236,5 +293,6 @@ enum Datenschema {
         Frist.self,
         Lernpfad.self,
         StoffgebietZuordnung.self,
+        Lerneinheit.self,
     ]
 }

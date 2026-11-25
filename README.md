@@ -41,7 +41,7 @@ swift test --package-path Packages/PharmaCore
 ## Ausbaustufen
 
 - [x] (a) App-Gerüst, Semester-Navigation, Datenmodell, Curriculum
-- [ ] (b) Kalender + Lernplan
+- [x] (b) Kalender + Lernplan
 - [ ] (c) Vorlesungen + Annotation
 - [ ] (d) Karteikarten + FSRS + Quiz
 - [ ] (e) Tutor

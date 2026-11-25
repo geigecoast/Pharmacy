@@ -116,6 +116,7 @@ struct TeilpruefungZeile: View {
 struct TeilpruefungBearbeiten: View {
     @Bindable var tp: Teilpruefung
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var kontext
 
     var body: some View {
         NavigationStack {
@@ -140,6 +141,21 @@ struct TeilpruefungBearbeiten: View {
                         OptionalesDatum(titel: Text("Anmeldeschluss"), datum: $tp.anmeldeschluss)
                     }
                 }
+                Section {
+                    Stepper(value: Binding(
+                        get: { tp.effektiverLernaufwandStunden },
+                        set: { tp.lernaufwandStunden = $0 }
+                    ), in: 0...200, step: 1) {
+                        Text("Lernaufwand: \(Int(tp.effektiverLernaufwandStunden)) Stunden")
+                    }
+                    if tp.lernaufwandStunden != nil {
+                        Button("Auf Standardwert zurücksetzen") { tp.lernaufwandStunden = nil }
+                    }
+                } header: {
+                    Text("Lernplan")
+                } footer: {
+                    Text("Der Lernplan verteilt diesen Aufwand auf die Tage vor der Prüfung.")
+                }
                 Section("Ergebnis") {
                     Picker("Ergebnis", selection: $tp.ergebnis) {
                         ForEach(PruefungsErgebnis.allCases) { ergebnis in
@@ -155,6 +171,9 @@ struct TeilpruefungBearbeiten: View {
             }
             .formStyle(.grouped)
             .navigationTitle("Teilprüfung")
+            .onDisappear {
+                LernplanDienst.aktualisieren(kontext)
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Fertig") { dismiss() }

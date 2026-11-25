@@ -6,6 +6,7 @@ struct EinstellungenAnsicht: View {
     @AppStorage(EinstellungsSchluessel.zulassungPh1) private var ph1 = true
     @AppStorage(EinstellungsSchluessel.onboardingAbgeschlossen) private var onboardingAbgeschlossen = true
     @State private var zeigeZuruecksetzen = false
+    @State private var zeigeLernzeiten = false
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -20,6 +21,18 @@ struct EinstellungenAnsicht: View {
                 AktuellesSemesterPicker()
                 Toggle("Zulassung Ph1 (1. Abschnitt bestanden)", isOn: $ph1)
             }
+
+            Section {
+                Button("Lernzeiten festlegen …") { zeigeLernzeiten = true }
+            } header: {
+                Text("Lernplan")
+            } footer: {
+                Text("Aus Prüfungsterminen und Lernzeiten entsteht ein Tag-für-Tag-Plan, der sich täglich an verpasste Einheiten anpasst.")
+            }
+
+            ErinnerungenBereich()
+
+            SystemkalenderBereich()
 
             APISchluesselBereich()
 
@@ -48,6 +61,9 @@ struct EinstellungenAnsicht: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Einstellungen")
+        .sheet(isPresented: $zeigeLernzeiten) {
+            LernzeitenAnsicht()
+        }
         .confirmationDialog("Curriculum zurücksetzen?", isPresented: $zeigeZuruecksetzen, titleVisibility: .visible) {
             Button("Zurücksetzen", role: .destructive) {
                 Seeder.zuruecksetzen(kontext)
@@ -125,6 +141,103 @@ struct GoogleDriveHinweis: View {
             Text("Der Import von Vorlesungen folgt in Ausbaustufe c.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct ErinnerungenBereich: View {
+    @Environment(\.modelContext) private var kontext
+    @AppStorage(EinstellungsSchluessel.erinnerungenAktiv) private var aktiv = false
+    @AppStorage(EinstellungsSchluessel.taeglicheErinnerung) private var taeglich = true
+    @AppStorage(EinstellungsSchluessel.erinnerungUhrzeitMinuten) private var uhrzeitMinuten = Standardwerte.erinnerungUhrzeitMinuten
+    @State private var hinweis: String?
+
+    private var uhrzeit: Binding<Date> {
+        Binding(
+            get: {
+                Calendar.current.date(bySettingHour: uhrzeitMinuten / 60, minute: uhrzeitMinuten % 60, second: 0, of: Date()) ?? Date()
+            },
+            set: { neu in
+                let teile = Calendar.current.dateComponents([.hour, .minute], from: neu)
+                uhrzeitMinuten = (teile.hour ?? 17) * 60 + (teile.minute ?? 0)
+            }
+        )
+    }
+
+    var body: some View {
+        Section {
+            Toggle("Erinnerungen", isOn: $aktiv)
+            if aktiv {
+                Toggle("Tägliche Lernerinnerung", isOn: $taeglich)
+                if taeglich {
+                    DatePicker("Uhrzeit", selection: uhrzeit, displayedComponents: .hourAndMinute)
+                }
+            }
+            if let hinweis {
+                Label(hinweis, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+            }
+        } header: {
+            Text("Erinnerungen")
+        } footer: {
+            Text("Erinnert an Teilprüfungen (eine Woche und einen Tag vorher), QIS/LSF-Anmeldeschlüsse und Fristen wie die Platzvergabe des Wahlpflichtfachs. Bestandene Lehrveranstaltungen werden nicht erinnert.")
+        }
+        .onChange(of: aktiv) { _, an in
+            Task {
+                if an {
+                    let erlaubt = await ErinnerungsDienst.berechtigungAnfragen()
+                    if !erlaubt {
+                        aktiv = false
+                        hinweis = "Mitteilungen sind für PharmaTutor in den Systemeinstellungen ausgeschaltet."
+                    } else {
+                        hinweis = nil
+                    }
+                }
+                await ErinnerungsDienst.planen(kontext)
+            }
+        }
+        .onChange(of: taeglich) { _, _ in
+            Task { await ErinnerungsDienst.planen(kontext) }
+        }
+        .onChange(of: uhrzeitMinuten) { _, _ in
+            Task { await ErinnerungsDienst.planen(kontext) }
+        }
+    }
+}
+
+struct SystemkalenderBereich: View {
+    @Environment(\.modelContext) private var kontext
+    @AppStorage(EinstellungsSchluessel.kalenderLerneinheitenExport) private var mitLerneinheiten = true
+    @State private var meldung: String?
+    @State private var laeuft = false
+
+    var body: some View {
+        Section {
+            Toggle("Lerneinheiten mitübertragen", isOn: $mitLerneinheiten)
+            Button {
+                laeuft = true
+                Task {
+                    do {
+                        let anzahl = try await SystemkalenderDienst.shared.abgleichen(kontext, mitLerneinheiten: mitLerneinheiten)
+                        meldung = "\(anzahl) Termine übertragen."
+                    } catch {
+                        meldung = error.localizedDescription
+                    }
+                    laeuft = false
+                }
+            } label: {
+                Label("Jetzt abgleichen", systemImage: "calendar.badge.plus")
+            }
+            .disabled(laeuft)
+            if let meldung {
+                Text(meldung)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Systemkalender")
+        } footer: {
+            Text("Teilprüfungen, Blockpraktika, Fristen und auf Wunsch Lerneinheiten werden in einen eigenen Kalender „PharmaTutor“ geschrieben. Bei jedem Abgleich wird dieser Kalender vollständig ersetzt; andere Kalender bleiben unberührt.")
         }
     }
 }

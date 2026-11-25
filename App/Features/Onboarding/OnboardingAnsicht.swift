@@ -5,12 +5,13 @@ import PharmaCore
 /// Einführung beim ersten Start: Semester, Prüfungstermine, API-Schlüssel, Google Drive.
 struct OnboardingAnsicht: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var kontext
     @AppStorage(EinstellungsSchluessel.onboardingAbgeschlossen) private var abgeschlossen = false
     @AppStorage(EinstellungsSchluessel.zulassungPh1) private var ph1 = true
     @Query(sort: \Semester.sortierung) private var alleSemester: [Semester]
     @State private var schritt = 0
 
-    private let anzahlSchritte = 5
+    private let anzahlSchritte = 6
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,7 +22,8 @@ struct OnboardingAnsicht: View {
                 case 0: willkommen
                 case 1: semesterSchritt
                 case 2: pruefungstermine
-                case 3: apiSchritt
+                case 3: lernzeitenSchritt
+                case 4: apiSchritt
                 default: driveSchritt
                 }
             }
@@ -54,6 +56,7 @@ struct OnboardingAnsicht: View {
     }
 
     private func abschliessen() {
+        LernplanDienst.aktualisieren(kontext)
         abgeschlossen = true
         dismiss()
     }
@@ -115,6 +118,17 @@ struct OnboardingAnsicht: View {
                     Text(verbatim: "\(lv.lfdNrAnzeige) \(lv.bezeichnung)")
                 }
             }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var lernzeitenSchritt: some View {
+        Form {
+            Section {
+                Text("Wie viel Zeit kannst du an den einzelnen Wochentagen lernen? Daraus entsteht dein Lernplan.")
+                    .foregroundStyle(.secondary)
+            }
+            LernzeitenFelder()
         }
         .formStyle(.grouped)
     }

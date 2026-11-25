@@ -4,8 +4,10 @@ import PharmaCore
 
 struct HeuteAnsicht: View {
     @Binding var auswahl: Bereich?
+    @Environment(\.modelContext) private var kontext
     @Query private var alleTeilpruefungen: [Teilpruefung]
     @Query private var alleFristen: [Frist]
+    @Query private var alleLerneinheiten: [Lerneinheit]
 
     private struct Termin: Identifiable {
         let teilpruefung: Teilpruefung
@@ -29,6 +31,26 @@ struct HeuteAnsicht: View {
             .sorted { ($0.datum ?? .distantFuture) < ($1.datum ?? .distantFuture) }
     }
 
+    private var heutigeEinheiten: [Lerneinheit] {
+        alleLerneinheiten
+            .filter { Calendar.current.isDateInToday($0.tag) }
+            .sorted { ($0.erledigt ? 1 : 0, $0.thema) < ($1.erledigt ? 1 : 0, $1.thema) }
+    }
+
+    /// Anmeldepflichtige Teilprüfungen ohne Anmeldung, deren Anmeldeschluss in den nächsten 30 Tagen liegt.
+    private var offeneAnmeldungen: [Teilpruefung] {
+        let heute = Calendar.current.startOfDay(for: Date())
+        let grenze = Calendar.current.date(byAdding: .day, value: 30, to: heute) ?? heute
+        return alleTeilpruefungen
+            .filter { tp in
+                guard tp.anmeldepflichtig, !tp.angemeldet, tp.ergebnis == .offen,
+                      tp.lehrveranstaltung?.status.istAbgeschlossen == false,
+                      let schluss = tp.anmeldeschluss else { return false }
+                return schluss >= heute && schluss <= grenze
+            }
+            .sorted { ($0.anmeldeschluss ?? .distantFuture) < ($1.anmeldeschluss ?? .distantFuture) }
+    }
+
     private var ohneTermin: Int {
         alleTeilpruefungen.filter { tp in
             guard let lv = tp.lehrveranstaltung, lv.semester?.istAktuell == true else { return false }
@@ -47,10 +69,7 @@ struct HeuteAnsicht: View {
                           spacing: Layout.abstand) {
                     naechstePruefungKarte
                     fristenKarte
-                    Karte(titel: Text("Lernplan für heute"), symbol: "list.bullet.clipboard", farbe: .teal) {
-                        Text("Der automatische Lernplan wird in Ausbaustufe b aus deinen Prüfungsterminen und Lernzeiten erstellt.")
-                            .foregroundStyle(.secondary)
-                    }
+                    lernplanKarte
                     Karte(titel: Text("Fällige Karteikarten"), symbol: "rectangle.on.rectangle.angled", farbe: .indigo) {
                         Text("Karteikarten mit Wiederholungsplanung (FSRS) folgen in Ausbaustufe d.")
                             .foregroundStyle(.secondary)
@@ -105,9 +124,55 @@ struct HeuteAnsicht: View {
         }
     }
 
+    private var lernplanKarte: some View {
+        Karte(titel: Text("Lernplan für heute"), symbol: "list.bullet.clipboard", farbe: .teal) {
+            let einheiten = heutigeEinheiten
+            if einheiten.isEmpty {
+                Text("Heute ist nichts geplant. Der Lernplan entsteht automatisch aus deinen Prüfungsterminen und Lernzeiten.")
+                    .foregroundStyle(.secondary)
+            } else {
+                let erledigt = einheiten.filter(\.erledigt).reduce(0) { $0 + $1.dauerMinuten }
+                let gesamt = einheiten.reduce(0) { $0 + $1.dauerMinuten }
+                ProgressView(value: Double(erledigt), total: Double(max(gesamt, 1))) {
+                    Text("\(Dauer.text(minuten: erledigt)) von \(Dauer.text(minuten: gesamt)) erledigt")
+                        .font(.caption)
+                }
+                ForEach(einheiten) { einheit in
+                    HeuteLerneinheit(einheit: einheit)
+                }
+            }
+            HStack {
+                Button("Zum Kalender") { auswahl = .kalender }
+                Spacer()
+                Button("Neu berechnen") { LernplanDienst.aktualisieren(kontext) }
+            }
+            .buttonStyle(.borderless)
+            .font(.callout)
+        }
+    }
+
     private var fristenKarte: some View {
         Karte(titel: Text("Fristen & Anmeldungen"), symbol: "calendar.badge.exclamationmark", farbe: .orange) {
-            if offeneFristen.isEmpty {
+            ForEach(offeneAnmeldungen) { tp in
+                Button {
+                    if let lv = tp.lehrveranstaltung { auswahl = .lehrveranstaltung(lv) }
+                } label: {
+                    HStack(alignment: .firstTextBaseline) {
+                        Label {
+                            Text("QIS/LSF-Anmeldung: \(tp.titelMitLfdNr)")
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        }
+                        Spacer()
+                        if let schluss = tp.anmeldeschluss {
+                            CountdownText(datum: schluss).font(.caption)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            if offeneFristen.isEmpty && offeneAnmeldungen.isEmpty {
                 Text("Keine offenen Fristen.")
                     .foregroundStyle(.secondary)
             } else {
@@ -152,5 +217,29 @@ struct FristZeile: View {
                 CountdownText(datum: datum).font(.caption)
             }
         }
+    }
+}
+
+private struct HeuteLerneinheit: View {
+    @Bindable var einheit: Lerneinheit
+
+    var body: some View {
+        Button {
+            einheit.umschalten()
+        } label: {
+            HStack(alignment: .firstTextBaseline) {
+                Image(systemName: einheit.erledigt ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(einheit.erledigt ? Color.green : einheit.farbe)
+                Text(einheit.thema)
+                    .strikethrough(einheit.erledigt)
+                    .lineLimit(2)
+                Spacer()
+                Text(verbatim: Dauer.text(minuten: einheit.dauerMinuten))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

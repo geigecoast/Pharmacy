@@ -31,6 +31,7 @@ targets:
       - path: App
         excludes:
           - "*.entitlements"
+          - "Info.plist"
     dependencies:
       - package: PharmaCore
     scheme:
@@ -40,6 +41,7 @@ targets:
         PRODUCT_NAME: PharmaTutor
         PRODUCT_BUNDLE_IDENTIFIER: de.pharmatutor.app
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: App/Info.plist
         TARGETED_DEVICE_FAMILY: "2"
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO

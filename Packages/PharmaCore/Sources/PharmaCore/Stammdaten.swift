@@ -151,6 +151,20 @@ public enum TeilpruefungTyp: String, Codable, CaseIterable, Identifiable, Sendab
         }
     }
 
+    /// Geschätzter Lernaufwand in Stunden (Standardwert, pro Teilprüfung änderbar).
+    public var standardLernaufwandStunden: Double {
+        switch self {
+        case .muendlicheEingangspruefung, .schriftlicheEingangspruefung: 15
+        case .praktischerTeil: 0
+        case .schriftlicheAbschlusspruefung: 25
+        case .muendlicheAbschlusspruefung: 20
+        case .abschlusskolloquium: 8
+        case .praesentation: 10
+        case .seminararbeit: 15
+        case .elektronischeAbschlusspruefung: 8
+        }
+    }
+
     /// Eingangsprüfungen schalten einen Praktischen Teil frei und werden im Lernplan priorisiert.
     public var istEingangspruefung: Bool {
         self == .muendlicheEingangspruefung || self == .schriftlicheEingangspruefung

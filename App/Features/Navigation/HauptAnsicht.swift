@@ -3,6 +3,7 @@ import SwiftData
 
 struct HauptAnsicht: View {
     @Environment(\.modelContext) private var kontext
+    @Environment(\.scenePhase) private var szenenPhase
     @AppStorage(EinstellungsSchluessel.onboardingAbgeschlossen) private var onboardingAbgeschlossen = false
     @AppStorage(EinstellungsSchluessel.ausgewaehltesSemester) private var semesterNummer = 5
     @State private var auswahl: Bereich? = .heute
@@ -20,7 +21,16 @@ struct HauptAnsicht: View {
         .focusedSceneValue(\.navigationsAuswahl, $auswahl)
         .task {
             Seeder.ladeFallsNoetig(kontext)
+            LernplanDienst.taeglichAktualisierenFallsNoetig(kontext)
             bereit = true
+            await ErinnerungsDienst.planen(kontext)
+        }
+        .onChange(of: szenenPhase) { _, phase in
+            if phase != .active {
+                Task { await ErinnerungsDienst.planen(kontext) }
+            } else {
+                LernplanDienst.taeglichAktualisierenFallsNoetig(kontext)
+            }
         }
         .sheet(isPresented: Binding(
             get: { bereit && !onboardingAbgeschlossen },
@@ -39,9 +49,7 @@ struct DetailAnsicht: View {
         case .heute, .none:
             HeuteAnsicht(auswahl: $auswahl)
         case .kalender:
-            FolgtInStufe(titel: "Kalender", symbol: "calendar",
-                         beschreibung: "Monats-, Wochen- und Tagesansicht mit allen Teilprüfungen, Fristen und dem automatischen Lernplan folgen in Ausbaustufe b.")
-                .navigationTitle("Kalender")
+            KalenderAnsicht(auswahl: $auswahl)
         case .dashboard:
             FolgtInStufe(titel: "Dashboard & Analysen", symbol: "chart.bar.xaxis",
                          beschreibung: "Fortschritt je Semester und Stoffgebiet, Lernzeit und die Prognose „Bist du rechtzeitig fertig?“ folgen in Ausbaustufe g.")
