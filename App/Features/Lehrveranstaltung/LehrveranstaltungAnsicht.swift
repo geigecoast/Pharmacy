@@ -37,31 +37,33 @@ struct LehrveranstaltungAnsicht: View {
     var beiLoeschen: () -> Void = {}
     var oeffnen: (Dokument, Int) -> Void = { _, _ in }
 
-    @SceneStorage("lvTab") private var tab: LVTab = .vorlesungen
-    @AppStorage("lvInspectorSichtbar") private var zeigeInspector = true
+    @AppStorage(EinstellungsSchluessel.lvTab) private var tab: LVTab = .vorlesungen
+    @AppStorage("lvInspectorSichtbar") private var zeigeInspector = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            LVKopf(lv: lv)
-                .padding(.horizontal, Layout.abstand)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
-            tabAuswahl
-                .padding(.horizontal, Layout.abstand)
-                .padding(.bottom, 10)
-            Divider()
-            inhalt
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        GeometryReader { geo in
+            let rand = geo.size.width > 700 ? Thema.randAussen : Thema.randKompakt
+            VStack(alignment: .leading, spacing: 0) {
+                LVKopf(lv: lv)
+                    .padding(.horizontal, rand)
+                    .padding(.top, 36)
+                Unterstrichtabs(werte: LVTab.allCases, auswahl: $tab) { $0.titel }
+                    .padding(.horizontal, rand)
+                    .padding(.top, 26)
+                inhalt(rand: rand)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
         }
+        .background(Thema.flaeche)
         .navigationTitle(lv.lfdNrAnzeige)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     zeigeInspector.toggle()
                 } label: {
-                    Label("Details", systemImage: "info.circle")
+                    Label("Angaben bearbeiten", systemImage: "slider.horizontal.3")
                 }
-                .help("Details ein- oder ausblenden")
+                .help("Stammdaten, Voraussetzungen und Notizen bearbeiten")
             }
         }
         .inspector(isPresented: $zeigeInspector) {
@@ -70,35 +72,14 @@ struct LehrveranstaltungAnsicht: View {
         }
     }
 
-    private var tabAuswahl: some View {
-        ViewThatFits(in: .horizontal) {
-            Picker("Bereich", selection: $tab) {
-                ForEach(LVTab.allCases) { t in
-                    Text(t.titel).tag(t)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-
-            Picker("Bereich", selection: $tab) {
-                ForEach(LVTab.allCases) { t in
-                    Label(t.titel, systemImage: t.symbol).tag(t)
-                }
-            }
-            .pickerStyle(.menu)
-            .fixedSize()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     @ViewBuilder
-    private var inhalt: some View {
+    private func inhalt(rand: CGFloat) -> some View {
         switch tab {
         case .vorlesungen:
-            VorlesungenAnsicht(lv: lv, oeffnen: oeffnen)
+            VorlesungenAnsicht(lv: lv, oeffnen: oeffnen, rand: rand)
         case .pruefung:
             PruefungsvorbereitungAnsicht(lv: lv)
+                .padding(.horizontal, rand)
         case .tutor:
             FolgtInStufe(titel: "Tutor", symbol: "bubble.left.and.text.bubble.right",
                          beschreibung: "Der KI-Nachhilfelehrer mit „Nur meine Unterlagen“, Erklärmodi und Wirkstoff-Steckbriefen folgt in Ausbaustufe e.")
@@ -112,43 +93,80 @@ struct LehrveranstaltungAnsicht: View {
     }
 }
 
-/// Kopfbereich mit den wichtigsten Angaben.
+/// Kopf: „[43] • Stoffgebiet H · P+S · 8 SWS · Prof. …“, großer Titel, Status-Pillen.
 struct LVKopf: View {
-    let lv: Lehrveranstaltung
+    @Bindable var lv: Lehrveranstaltung
     @Query private var alleLVs: [Lehrveranstaltung]
     @AppStorage(EinstellungsSchluessel.zulassungPh1) private var ph1 = true
 
+    private var metazeile: String {
+        var teile: [String] = []
+        if !lv.stoffgebiete.isEmpty {
+            teile.append("Stoffgebiet " + lv.stoffgebiete.map(\.code).joined(separator: "+"))
+        }
+        teile.append(lv.lehrform.kuerzel)
+        if !lv.sws.isEmpty { teile.append(lv.swsAnzeige) }
+        if !lv.leistungsnachweis.isEmpty { teile.append("LN \(lv.leistungsnachweis)") }
+        if !lv.dozenten.isEmpty { teile.append(lv.dozenten.joined(separator: " / ")) }
+        return teile.joined(separator: "  ·  ")
+    }
+
     var body: some View {
         let freigabe = lv.freigabe(in: .aus(alleLVs, ph1: ph1))
-        VStack(alignment: .leading, spacing: 8) {
-            Text(lv.bezeichnung)
-                .font(.title2.weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
-                ForEach(lv.stoffgebiete) { gebiet in
-                    StoffgebietMarke(stoffgebiet: gebiet)
+        HStack(alignment: .bottom, spacing: 24) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    LfdNrText(text: LfdNr.anzeige(lv.lfdNr), groesse: 13, farbe: Thema.tinte)
+                    Punkt(farbe: lv.farbe)
+                    Text(verbatim: metazeile)
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteSekundaer)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
-                Text(verbatim: [lv.lehrform.name, lv.swsAnzeige, lv.leistungsnachweis.isEmpty ? nil : "LN \(lv.leistungsnachweis)"]
-                    .compactMap { $0 }.joined(separator: " · "))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                StatusMarke(status: lv.status)
-                if freigabe != .bestanden {
-                    Label(freigabe.name, systemImage: freigabe.symbol)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(freigabe.farbe)
+                Text(verbatim: lv.anzeigename)
+                    .font(Thema.display(44))
+                    .foregroundStyle(Thema.tinte)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                if lv.anzeigename != lv.bezeichnung {
+                    Text(verbatim: lv.bezeichnung)
+                        .font(Thema.ui(13))
+                        .foregroundStyle(Thema.tinteSekundaer)
+                        .lineLimit(2)
+                }
+                if lv.status == .bestanden {
+                    Text("Bestanden – Unterlagen bleiben als Archiv und Staatsexamen-Material erhalten.")
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteTertiaer)
+                } else if case .blockiert(let fehlend) = freigabe {
+                    Text("Noch blockiert: \(fehlend.joined(separator: ", "))")
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Stoffgebiet.i.farbe)
+                        .lineLimit(2)
                 }
             }
-            if lv.status == .bestanden {
-                Label("Bestanden – die Unterlagen bleiben als Archiv und Staatsexamen-Material erhalten. Es gibt keine Prüfungserinnerungen mehr.",
-                      systemImage: "archivebox")
-                    .font(.callout)
-                    .foregroundStyle(.green)
-            } else if lv.anmeldepflicht {
-                Label("Anmeldepflichtig im QIS/LSF (*)", systemImage: "exclamationmark.triangle")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
+            Spacer(minLength: 12)
+            HStack(spacing: 8) {
+                Menu {
+                    Picker("Status", selection: $lv.status) {
+                        ForEach(LVStatus.allCases) { status in
+                            Text(status.name).tag(status)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Pille(text: lv.status.name, betont: lv.status != .offen)
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Status ändern")
+                if lv.anmeldepflicht {
+                    Pille(text: "Anmeldung QIS/LSF *")
+                        .help(Studienregeln.anmeldeHinweis)
+                }
             }
         }
     }

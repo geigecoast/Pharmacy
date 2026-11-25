@@ -121,6 +121,14 @@ final class CurriculumTests: XCTestCase {
         }
     }
 
+    func testKurznamen() {
+        for k in Curriculum.alleKurse {
+            XCTAssertFalse(k.kurzname.isEmpty)
+            XCTAssertLessThanOrEqual(k.kurzname.count, 26, "Kurzname von [\(k.lfdNr)] ist zu lang für die Seitenleiste")
+        }
+        XCTAssertEqual(Curriculum.alleKurse.first { $0.lfdNr == "43" }?.kurzname, "Arzneistoffanalytik")
+    }
+
     func testStatus() {
         XCTAssertEqual(Curriculum.alleKurse.filter { $0.status == .bestanden }.map(\.lfdNr), ["44"])
         XCTAssertEqual(Curriculum.alleKurse.first { $0.lfdNr == "43" }?.status, .offen)

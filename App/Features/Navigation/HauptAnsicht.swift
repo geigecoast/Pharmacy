@@ -10,12 +10,18 @@ struct HauptAnsicht: View {
     @State private var suche = ""
     @State private var bereit = false
 
+    @State private var spalten: NavigationSplitViewVisibility = .all
+    @State private var kompaktSpalte: NavigationSplitViewColumn = .sidebar
+
     var body: some View {
-        NavigationSplitView {
-            Seitenleiste(auswahl: $auswahl, semesterNummer: $semesterNummer, suche: suche)
-                .navigationSplitViewColumnWidth(min: 250, ideal: 290, max: 380)
+        NavigationSplitView(columnVisibility: $spalten, preferredCompactColumn: $kompaktSpalte) {
+            Seitenleiste(auswahl: $auswahl, semesterNummer: $semesterNummer, suche: suche) {
+                kompaktSpalte = .detail
+            }
+            .navigationSplitViewColumnWidth(min: 240, ideal: 256, max: 320)
         } detail: {
             DetailAnsicht(auswahl: $auswahl)
+                .background(Thema.flaeche)
         }
         .searchable(text: $suche, placement: .sidebar, prompt: Text("Suchen, z. B. [43]"))
         .focusedSceneValue(\.navigationsAuswahl, $auswahl)
@@ -51,9 +57,7 @@ struct DetailAnsicht: View {
         case .kalender:
             KalenderAnsicht(auswahl: $auswahl)
         case .dashboard:
-            FolgtInStufe(titel: "Dashboard & Analysen", symbol: "chart.bar.xaxis",
-                         beschreibung: "Fortschritt je Semester und Stoffgebiet, Lernzeit und die Prognose „Bist du rechtzeitig fertig?“ folgen in Ausbaustufe g.")
-                .navigationTitle("Dashboard & Analysen")
+            DashboardAnsicht(auswahl: $auswahl)
         case .voraussetzungen:
             VoraussetzungenAnsicht(auswahl: $auswahl)
         case .einstellungen:

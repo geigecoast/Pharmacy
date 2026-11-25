@@ -31,7 +31,7 @@ struct KalenderAnsicht: View {
     @Query private var teilpruefungen: [Teilpruefung]
     @Query private var fristen: [Frist]
     @Query private var lerneinheiten: [Lerneinheit]
-    @SceneStorage("kalenderModus") private var modus: KalenderModus = .woche
+    @SceneStorage("kalenderModus") private var modus: KalenderModus = .monat
     @AppStorage(EinstellungsSchluessel.lernplanWarnungen) private var warnungen = ""
     @AppStorage(EinstellungsSchluessel.kalenderLerneinheitenExport) private var lerneinheitenExportieren = true
 
@@ -49,7 +49,6 @@ struct KalenderAnsicht: View {
         VStack(spacing: 0) {
             kopfzeile
             hinweise
-            Divider()
             switch modus {
             case .monat:
                 MonatsAnsicht(stichtag: stichtag, eintraege: daten, kalender: kalender) { tag in
@@ -69,6 +68,7 @@ struct KalenderAnsicht: View {
                              auswahl: $auswahl)
             }
         }
+        .background(Thema.flaeche)
         .navigationTitle("Kalender")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -103,41 +103,74 @@ struct KalenderAnsicht: View {
     // MARK: Kopfzeile
 
     private var kopfzeile: some View {
-        HStack(spacing: 12) {
-            Text(zeitraumTitel)
-                .font(.title2.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Spacer(minLength: 8)
-            HStack(spacing: 4) {
-                Button {
-                    blaettern(-1)
-                } label: {
-                    Label("Zurück", systemImage: "chevron.left")
+        VStack(spacing: 0) {
+            HStack(alignment: .lastTextBaseline, spacing: 16) {
+                titelText
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Spacer(minLength: 12)
+                HStack(spacing: 6) {
+                    ForEach(KalenderModus.allCases) { m in
+                        if m != .monat {
+                            Text(verbatim: "·").foregroundStyle(Thema.tinteTertiaer)
+                        }
+                        Button {
+                            modus = m
+                        } label: {
+                            Text(m.titel)
+                                .foregroundStyle(modus == m ? Thema.tinte : Thema.tinteSekundaer)
+                                .underline(modus == m)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .keyboardShortcut(.leftArrow, modifiers: .command)
-                Button("Heute") { stichtag = Date() }
-                    .keyboardShortcut("t", modifiers: .command)
-                Button {
-                    blaettern(1)
-                } label: {
-                    Label("Weiter", systemImage: "chevron.right")
+                .font(Thema.ui(12))
+                HStack(spacing: 14) {
+                    Button {
+                        blaettern(-1)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .keyboardShortcut(.leftArrow, modifiers: .command)
+                    .accessibilityLabel("Zurück")
+                    Button("Heute") { stichtag = Date() }
+                        .keyboardShortcut("t", modifiers: .command)
+                    Button {
+                        blaettern(1)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .keyboardShortcut(.rightArrow, modifiers: .command)
+                    .accessibilityLabel("Weiter")
                 }
-                .keyboardShortcut(.rightArrow, modifiers: .command)
+                .buttonStyle(.plain)
+                .font(Thema.ui(12))
+                .foregroundStyle(Thema.tinteSekundaer)
             }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.bordered)
-            Picker("Ansicht", selection: $modus) {
-                ForEach(KalenderModus.allCases) { m in
-                    Text(m.titel).tag(m)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+            .padding(.bottom, 18)
+            Haarlinie(farbe: Thema.tinte)
         }
-        .padding(.horizontal, Layout.abstand)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Thema.randAussen)
+        .padding(.top, 40)
+    }
+
+    /// „Dezember 2026“ – Jahr in Grau; Woche/Tag mit eigenem Titel.
+    @ViewBuilder
+    private var titelText: some View {
+        switch modus {
+        case .monat:
+            HStack(alignment: .lastTextBaseline, spacing: 14) {
+                Text(verbatim: stichtag.formatted(.dateTime.month(.wide).locale(.deutsch)))
+                    .foregroundStyle(Thema.tinte)
+                Text(verbatim: stichtag.formatted(.dateTime.year().locale(.deutsch)))
+                    .foregroundStyle(Thema.tinteTertiaer)
+            }
+            .font(Thema.display(52))
+        case .woche, .tag:
+            Text(verbatim: zeitraumTitel)
+                .font(Thema.display(40))
+                .foregroundStyle(Thema.tinte)
+        }
     }
 
     @ViewBuilder
@@ -147,7 +180,7 @@ struct KalenderAnsicht: View {
             VStack(alignment: .leading, spacing: 4) {
                 if let meldung {
                     HStack {
-                        Label(meldung, systemImage: "info.circle")
+                        Text(verbatim: meldung)
                         Spacer()
                         Button {
                             self.meldung = nil
@@ -160,13 +193,13 @@ struct KalenderAnsicht: View {
                     .foregroundStyle(.secondary)
                 }
                 ForEach(liste, id: \.self) { warnung in
-                    Label(warnung, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
+                    Text(verbatim: warnung)
+                        .foregroundStyle(Stoffgebiet.i.farbe)
                 }
             }
-            .font(.callout)
-            .padding(.horizontal, Layout.abstand)
-            .padding(.bottom, 8)
+            .font(Thema.ui(12))
+            .padding(.horizontal, Thema.randAussen)
+            .padding(.top, 12)
         }
     }
 

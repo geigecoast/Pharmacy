@@ -29,11 +29,11 @@ public enum MarkierungsFarbe: String, Codable, CaseIterable, Identifiable, Senda
     /// sRGB-Werte 0…1.
     public var rgb: (rot: Double, gruen: Double, blau: Double) {
         switch self {
-        case .gelb: (1.00, 0.84, 0.20)
-        case .rot: (0.94, 0.33, 0.31)
-        case .gruen: (0.40, 0.78, 0.42)
-        case .blau: (0.33, 0.60, 0.96)
-        case .lila: (0.69, 0.47, 0.90)
+        case .gelb: (1.000, 0.906, 0.659)   // #ffe7a8
+        case .rot: (1.000, 0.835, 0.816)    // #ffd5d0
+        case .gruen: (0.847, 0.941, 0.863)  // #d8f0dc
+        case .blau: (0.839, 0.902, 0.984)   // #d6e6fb
+        case .lila: (0.914, 0.863, 0.969)   // #e9dcf7
         }
     }
 }

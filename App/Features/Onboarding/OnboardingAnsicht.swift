@@ -8,6 +8,7 @@ struct OnboardingAnsicht: View {
     @Environment(\.modelContext) private var kontext
     @AppStorage(EinstellungsSchluessel.onboardingAbgeschlossen) private var abgeschlossen = false
     @AppStorage(EinstellungsSchluessel.zulassungPh1) private var ph1 = true
+    @AppStorage(EinstellungsSchluessel.vorname) private var vorname = ""
     @Query(sort: \Semester.sortierung) private var alleSemester: [Semester]
     @State private var schritt = 0
 
@@ -15,8 +16,9 @@ struct OnboardingAnsicht: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ProgressView(value: Double(schritt + 1), total: Double(anzahlSchritte))
-                .padding()
+            Fortschrittslinie(wert: Double(schritt + 1) / Double(anzahlSchritte))
+                .padding(.horizontal, 48)
+                .padding(.top, 28)
             Group {
                 switch schritt {
                 case 0: willkommen
@@ -40,10 +42,12 @@ struct OnboardingAnsicht: View {
                     }
                     Button("Weiter") { schritt += 1 }
                         .buttonStyle(.borderedProminent)
+                        .tint(Thema.tinte)
                         .keyboardShortcut(.defaultAction)
                 } else {
                     Button("Los geht’s") { abschliessen() }
                         .buttonStyle(.borderedProminent)
+                        .tint(Thema.tinte)
                         .keyboardShortcut(.defaultAction)
                 }
             }
@@ -64,23 +68,30 @@ struct OnboardingAnsicht: View {
     // MARK: Schritte
 
     private var willkommen: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "cross.vial.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.tint)
-            Text("Willkommen bei PharmaTutor")
-                .font(.largeTitle.weight(.bold))
-                .multilineTextAlignment(.center)
-            Text("Deine Lern-App für das Pharmaziestudium: Vorlesungen, Prüfungsvorbereitung, KI-Tutor, Karteikarten und Lernplan – geordnet nach Semester und Lehrveranstaltung.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: 460)
-            Text("Der Studienverlaufsplan des FB 14 (5.–8. Semester) ist bereits vorgeladen und jederzeit änderbar.")
-                .font(.callout)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 460)
+        VStack(alignment: .leading, spacing: 22) {
+            Text("PharmaTutor")
+                .font(Thema.display(22))
+                .foregroundStyle(Thema.tinteSekundaer)
+            Text("Willkommen.")
+                .font(Thema.display(60))
+                .foregroundStyle(Thema.tinte)
+            Text("Deine Lern-App für das Pharmaziestudium: Vorlesungen, Prüfungsvorbereitung, KI-Tutor, Karteikarten und Lernplan – geordnet nach Semester und Lehrveranstaltung. Der Studienverlaufsplan des FB 14 ist bereits vorgeladen und jederzeit änderbar.")
+                .font(Thema.ui(15))
+                .foregroundStyle(Thema.tinteSekundaer)
+                .lineSpacing(4)
+                .frame(maxWidth: 480, alignment: .leading)
+            VStack(alignment: .leading, spacing: 8) {
+                Kleintitel(text: "Wie heißt du?")
+                TextField("Vorname", text: $vorname)
+                    .textFieldStyle(.plain)
+                    .font(Thema.display(28))
+                    .frame(maxWidth: 360)
+                Haarlinie(farbe: Thema.tinte).frame(maxWidth: 360)
+            }
+            .padding(.top, 10)
         }
-        .padding()
+        .padding(48)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
     private var semesterSchritt: some View {

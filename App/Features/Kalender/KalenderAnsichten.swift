@@ -22,30 +22,37 @@ struct MonatsAnsicht: View {
     var body: some View {
         let tage = Self.tage(fuer: stichtag, kalender: kalender)
         let monat = kalender.component(.month, from: stichtag)
+        let wochen = stride(from: 0, to: tage.count, by: 7).map { Array(tage[$0..<min($0 + 7, tage.count)]) }
         ScrollView {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
                     ForEach(Self.wochentagsKuerzel, id: \.self) { kuerzel in
-                        Text(kuerzel)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
+                        Text(verbatim: kuerzel)
+                            .textCase(.uppercase)
+                            .font(Thema.ui(11))
+                            .tracking(0.8)
+                            .foregroundStyle(Thema.tinteTertiaer)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
                     }
                 }
-                .padding(.vertical, 6)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 1), count: 7), spacing: 1) {
-                    ForEach(tage, id: \.self) { tag in
-                        MonatsZelle(tag: tag,
-                                    imMonat: kalender.component(.month, from: tag) == monat,
-                                    istHeute: kalender.isDateInToday(tag),
-                                    eintraege: eintraege[kalender.startOfDay(for: tag)] ?? [])
-                            .onTapGesture { tagGewaehlt(tag) }
+                .padding(.vertical, 12)
+                Haarlinie()
+                ForEach(wochen, id: \.first) { woche in
+                    HStack(alignment: .top, spacing: 0) {
+                        ForEach(woche, id: \.self) { tag in
+                            MonatsZelle(tag: tag,
+                                        imMonat: kalender.component(.month, from: tag) == monat,
+                                        istHeute: kalender.isDateInToday(tag),
+                                        eintraege: eintraege[kalender.startOfDay(for: tag)] ?? [])
+                                .onTapGesture { tagGewaehlt(tag) }
+                        }
                     }
+                    Haarlinie()
                 }
-                .background(Color.secondary.opacity(0.2))
-                .clipShape(RoundedRectangle(cornerRadius: Layout.eckenradius))
             }
-            .padding(Layout.abstand)
+            .padding(.horizontal, Thema.randAussen)
+            .padding(.bottom, 32)
         }
     }
 }
@@ -57,27 +64,27 @@ private struct MonatsZelle: View {
     let eintraege: [KalenderEintrag]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(tag.formatted(.dateTime.day().locale(.deutsch)))
-                .font(.callout.weight(istHeute ? .bold : .regular))
-                .foregroundStyle(istHeute ? Color.white : Color.primary)
-                .frame(minWidth: 24, minHeight: 24)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(verbatim: tag.formatted(.dateTime.day().locale(.deutsch)))
+                .font(Thema.ui(13, istHeute ? .mittel : .normal))
+                .foregroundStyle(istHeute ? Thema.tinteInvers : Thema.tinte)
+                .padding(.horizontal, istHeute ? 6 : 0)
+                .padding(.vertical, istHeute ? 1 : 0)
                 .background {
-                    if istHeute { Circle().fill(Color.accentColor) }
+                    if istHeute { Capsule().fill(Thema.tinte) }
                 }
             ForEach(eintraege.prefix(3)) { eintrag in
                 EintragsChip(eintrag: eintrag, kompakt: true)
             }
             if eintraege.count > 3 {
                 Text("+\(eintraege.count - 3) weitere")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(Thema.ui(10))
+                    .foregroundStyle(Thema.tinteTertiaer)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
-        .padding(4)
-        .background(.background)
-        .opacity(imMonat ? 1 : 0.45)
+        .padding(8)
+        .opacity(imMonat ? 1 : 0.35)
         .contentShape(Rectangle())
     }
 }
@@ -105,11 +112,12 @@ struct WochenAnsicht: View {
                                      verschieben: verschieben)
                     }
                 }
-                Text("Tipp: Lerneinheiten lassen sich per Drag & Drop auf einen anderen Tag verschieben.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text("Lerneinheiten lassen sich per Drag & Drop auf einen anderen Tag verschieben.")
+                    .font(Thema.ui(11))
+                    .foregroundStyle(Thema.tinteTertiaer)
             }
-            .padding(Layout.abstand)
+            .padding(.horizontal, Thema.randAussen)
+            .padding(.vertical, 20)
         }
     }
 }
@@ -134,15 +142,16 @@ private struct WochenSpalte: View {
             } label: {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(tag.formatted(.dateTime.weekday(.abbreviated).locale(.deutsch)))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                        .font(Thema.ui(11))
+                        .foregroundStyle(Thema.tinteTertiaer)
                     Text(tag.formatted(.dateTime.day().month(.abbreviated).locale(.deutsch)))
-                        .font(.headline)
-                        .foregroundStyle(istHeute ? Color.accentColor : Color.primary)
+                        .font(Thema.display(22, schwer: istHeute))
+                        .foregroundStyle(Thema.tinte)
                     if lernminuten > 0 {
                         Text(verbatim: Dauer.text(minuten: lernminuten))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .font(Thema.ui(10))
+                            .foregroundStyle(Thema.tinteTertiaer)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -166,7 +175,7 @@ private struct WochenSpalte: View {
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: Layout.eckenradius)
-                .fill(zielMarkiert ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(istHeute ? 0.12 : 0.06))
+                .fill(zielMarkiert ? Thema.auswahl : (istHeute ? Thema.flaecheGedaempft : Color.clear))
         )
         .dropDestination(for: String.self) { elemente, _ in
             guard let text = elemente.first, let kennung = UUID(uuidString: text) else { return false }
@@ -296,7 +305,7 @@ struct LerneinheitZeile: View {
                 HStack(spacing: 6) {
                     if einheit.verpasst {
                         Label("verpasst", systemImage: "clock.badge.exclamationmark")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Stoffgebiet.i.farbe)
                     }
                     if einheit.manuell {
                         Label("selbst geplant", systemImage: "hand.point.up.left")

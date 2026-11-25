@@ -54,6 +54,7 @@ enum Seeder {
 
             for (kIndex, k) in s.kurse.enumerated() {
                 let lv = Lehrveranstaltung(lfdNr: k.lfdNr, bezeichnung: k.bezeichnung, lehrform: k.lehrform, sws: k.sws, sortierung: kIndex)
+                lv.kurzname = k.kurzname
                 lv.stoffgebiete = k.stoffgebiete
                 lv.leistungsnachweis = k.leistungsnachweis
                 lv.dozenten = k.dozenten

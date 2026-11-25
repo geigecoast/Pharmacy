@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 import PharmaCore
 
-/// Übersicht: welche Veranstaltung schaltet welche frei, was ist blockiert und warum.
+/// Welche Veranstaltung schaltet welche frei, was ist blockiert und warum.
 struct VoraussetzungenAnsicht: View {
     @Binding var auswahl: Bereich?
     @Query(sort: \Semester.sortierung) private var alleSemester: [Semester]
@@ -12,36 +12,35 @@ struct VoraussetzungenAnsicht: View {
     var body: some View {
         let stand = StudienStand.aus(alleLVs, ph1: ph1)
         let schaltetFrei = freischaltungen()
-
-        List {
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 48) {
+                Seitentitel(titel: "Voraussetzungen", unterzeile: Studienregeln.anmeldeHinweis)
                 Toggle("Zulassung Ph1 (1. Abschnitt bestanden)", isOn: $ph1)
-                Label(Studienregeln.anmeldeHinweis, systemImage: "exclamationmark.triangle")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-            } header: {
-                Text("Studienregeln")
-            } footer: {
-                Text("Der grafische Voraussetzungs-Graph folgt in Ausbaustufe g.")
-            }
+                    .font(Thema.ui(14))
+                    .frame(maxWidth: 420, alignment: .leading)
 
-            ForEach(alleSemester.filter { $0.typ == .regulaer && !($0.lehrveranstaltungen ?? []).isEmpty }) { semester in
-                Section(semester.titel) {
-                    ForEach(semester.sortierteLehrveranstaltungen.filter(istRelevant)) { lv in
-                        Button {
-                            auswahl = .lehrveranstaltung(lv)
-                        } label: {
-                            VoraussetzungsZeile(
-                                lv: lv,
-                                freigabe: lv.freigabe(in: stand),
-                                schaltetFrei: lv.lfdNrTeile.flatMap { schaltetFrei[$0] ?? [] }
-                            )
+                ForEach(alleSemester.filter { $0.typ == .regulaer && !($0.lehrveranstaltungen ?? []).isEmpty }) { semester in
+                    VStack(alignment: .leading, spacing: 0) {
+                        Abschnittstitel(titel: LocalizedStringKey(semester.titel)) { EmptyView() }
+                        ForEach(semester.sortierteLehrveranstaltungen.filter(istRelevant)) { lv in
+                            Button {
+                                auswahl = .lehrveranstaltung(lv)
+                            } label: {
+                                VoraussetzungsZeile(lv: lv, freigabe: lv.freigabe(in: stand),
+                                                    schaltetFrei: lv.lfdNrTeile.flatMap { schaltetFrei[$0] ?? [] })
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
+                Text("Der grafische Voraussetzungs-Graph folgt in Ausbaustufe g.")
+                    .font(Thema.ui(12))
+                    .foregroundStyle(Thema.tinteTertiaer)
             }
+            .frame(maxWidth: 980, alignment: .leading)
+            .seitenrand()
         }
+        .background(Thema.flaeche)
         .navigationTitle("Voraussetzungen")
     }
 
@@ -67,45 +66,52 @@ struct VoraussetzungsZeile: View {
     let schaltetFrei: [String]
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             Image(systemName: freigabe.symbol)
+                .font(.system(size: 11))
                 .foregroundStyle(freigabe.farbe)
-                .frame(width: 22)
+                .frame(width: 16)
                 .accessibilityLabel(freigabe.name)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(verbatim: "\(lv.lfdNrAnzeige) \(lv.bezeichnung)")
-                    .fontWeight(.medium)
+            LfdNrText(text: lv.lfdNrAnzeige, groesse: 12)
+                .frame(width: 66, alignment: .leading)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(verbatim: lv.anzeigename)
+                    .font(Thema.ui(15))
+                    .foregroundStyle(Thema.tinte)
                 if lv.voraussetzungen != .keine {
                     Text("Voraussetzung: \(lv.voraussetzungen.beschreibung)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteSekundaer)
                 }
                 switch freigabe {
                 case .blockiert(let fehlend):
                     ForEach(fehlend, id: \.self) { eintrag in
-                        Label(eintrag, systemImage: "minus.circle")
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                        Text("Fehlt: \(eintrag)")
+                            .font(Thema.ui(12))
+                            .foregroundStyle(Stoffgebiet.i.farbe)
                     }
                 case .freigeschaltet(let hinweise):
                     ForEach(hinweise, id: \.self) { hinweis in
-                        Label(hinweis, systemImage: "info.circle")
-                            .font(.caption)
-                            .foregroundStyle(.blue)
+                        Text(verbatim: hinweis)
+                            .font(Thema.ui(12))
+                            .foregroundStyle(Thema.tinteSekundaer)
                     }
                 case .bestanden:
                     EmptyView()
                 }
                 if !schaltetFrei.isEmpty {
                     Text("Schaltet frei: \(schaltetFrei.joined(separator: ", "))")
-                        .font(.caption)
-                        .foregroundStyle(.green)
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteTertiaer)
                 }
             }
-            Spacer(minLength: 0)
-            StatusMarke(status: lv.status)
+            Spacer(minLength: 12)
+            Text(verbatim: freigabe.name)
+                .font(Thema.ui(12))
+                .foregroundStyle(freigabe.farbe)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 16)
         .contentShape(Rectangle())
+        .overlay(alignment: .bottom) { Haarlinie() }
     }
 }

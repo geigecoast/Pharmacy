@@ -11,61 +11,64 @@ struct SemesterUebersicht: View {
     @State private var zeigeNeueLV = false
     @State private var zeigeBearbeiten = false
 
-    private var stand: StudienStand { .aus(alleLVs, ph1: ph1) }
+    private var unterzeile: String {
+        let lvs = semester.sortierteLehrveranstaltungen
+        var teile: [String] = []
+        if let beginn = semester.vorlesungsbeginn, let ende = semester.vorlesungsende {
+            teile.append("Vorlesungszeit \(beginn.kurzesDatum) – \(ende.kurzesDatum)")
+        }
+        if !lvs.isEmpty {
+            teile.append("\(lvs.filter { $0.status == .bestanden }.count) von \(lvs.count) bestanden")
+        }
+        return teile.joined(separator: " · ")
+    }
 
     var body: some View {
         let lvs = semester.sortierteLehrveranstaltungen
-        let stand = self.stand
-
+        let stand = StudienStand.aus(alleLVs, ph1: ph1)
         ScrollView {
-            VStack(alignment: .leading, spacing: Layout.abstand) {
-                kopf(lvs: lvs)
+            VStack(alignment: .leading, spacing: 44) {
+                Seitentitel(titel: semester.titel, unterzeile: unterzeile.isEmpty ? nil : unterzeile)
 
                 if !semester.sortierteFristen.isEmpty {
-                    Karte(titel: Text("Fristen in diesem Semester"), symbol: "calendar.badge.exclamationmark", farbe: .orange) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Abschnittstitel("Fristen")
                         ForEach(semester.sortierteFristen) { frist in
                             FristZeile(frist: frist)
                         }
                     }
                 }
 
-                if lvs.isEmpty {
-                    ContentUnavailableView {
-                        Label("Noch keine Lehrveranstaltungen", systemImage: "books.vertical")
-                    } description: {
-                        Text("Füge Lehrveranstaltungen hinzu, zum Beispiel aus deinem Grundstudium.")
-                    } actions: {
-                        Button("Lehrveranstaltung hinzufügen") { zeigeNeueLV = true }
-                            .buttonStyle(.borderedProminent)
-                    }
-                } else {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 290), spacing: Layout.abstand, alignment: .top)],
-                              spacing: Layout.abstand) {
-                        ForEach(lvs) { lv in
-                            Button {
-                                auswahl = .lehrveranstaltung(lv)
-                            } label: {
-                                LVKarte(lv: lv, freigabe: lv.freigabe(in: stand))
-                            }
+                VStack(alignment: .leading, spacing: 0) {
+                    Abschnittstitel(titel: "Lehrveranstaltungen") {
+                        Button("Hinzufügen") { zeigeNeueLV = true }
                             .buttonStyle(.plain)
+                            .underline()
+                    }
+                    if lvs.isEmpty {
+                        Text("Noch keine Lehrveranstaltungen – zum Beispiel aus deinem Grundstudium.")
+                            .font(Thema.ui(14))
+                            .foregroundStyle(Thema.tinteSekundaer)
+                            .padding(.vertical, 20)
+                    }
+                    ForEach(lvs) { lv in
+                        SemesterKursZeile(lv: lv, freigabe: lv.freigabe(in: stand)) {
+                            auswahl = .lehrveranstaltung(lv)
                         }
                     }
                 }
             }
-            .padding(Layout.abstand)
+            .frame(maxWidth: 980, alignment: .leading)
+            .seitenrand()
         }
+        .background(Thema.flaeche)
         .navigationTitle(semester.titel)
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     zeigeBearbeiten = true
                 } label: {
                     Label("Semester bearbeiten", systemImage: "calendar")
-                }
-                Button {
-                    zeigeNeueLV = true
-                } label: {
-                    Label("Lehrveranstaltung hinzufügen", systemImage: "plus")
                 }
             }
         }
@@ -78,88 +81,103 @@ struct SemesterUebersicht: View {
             SemesterBearbeitenAnsicht(semester: semester)
         }
     }
+}
 
-    @ViewBuilder
-    private func kopf(lvs: [Lehrveranstaltung]) -> some View {
-        let bestanden = lvs.filter { $0.status == .bestanden }.count
-        VStack(alignment: .leading, spacing: 6) {
-            if let beginn = semester.vorlesungsbeginn, let ende = semester.vorlesungsende {
-                Text("Vorlesungszeit: \(beginn.kurzesDatum) – \(ende.kurzesDatum)")
-                    .foregroundStyle(.secondary)
-            }
-            if !lvs.isEmpty {
-                HStack(spacing: 12) {
-                    ProgressView(value: Double(bestanden), total: Double(lvs.count))
-                        .frame(maxWidth: 220)
-                    Text("\(bestanden) von \(lvs.count) Lehrveranstaltungen bestanden")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+private struct SemesterKursZeile: View {
+    let lv: Lehrveranstaltung
+    let freigabe: Freigabe
+    var aktion: () -> Void
+
+    private var meta: String {
+        var teile = [lv.lehrform.kuerzel]
+        if !lv.sws.isEmpty { teile.append(lv.swsAnzeige) }
+        if !lv.leistungsnachweis.isEmpty { teile.append("LN \(lv.leistungsnachweis)") }
+        if !lv.dozenten.isEmpty { teile.append(lv.dozenten.joined(separator: " / ")) }
+        return teile.joined(separator: " · ")
+    }
+
+    var body: some View {
+        Button(action: aktion) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Punkt(farbe: lv.farbe)
+                LfdNrText(text: lv.lfdNrAnzeige, groesse: 12)
+                    .frame(width: 66, alignment: .leading)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(verbatim: lv.anzeigename)
+                        .font(Thema.ui(15))
+                        .foregroundStyle(lv.status == .bestanden ? Thema.tinteTertiaer : Thema.tinte)
+                    Text(verbatim: meta)
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteSekundaer)
+                        .lineLimit(1)
+                    if case .blockiert(let fehlend) = freigabe {
+                        Text("Blockiert: \(fehlend.joined(separator: ", "))")
+                            .font(Thema.ui(11))
+                            .foregroundStyle(Thema.tinteTertiaer)
+                            .lineLimit(1)
+                    }
                 }
+                Spacer(minLength: 12)
+                if let tp = lv.naechsteTeilpruefung, let datum = tp.datum {
+                    Text(verbatim: "\(max(0, Countdown.tage(bis: datum))) T")
+                        .font(Thema.mono(12))
+                        .foregroundStyle(Thema.tinteSekundaer)
+                        .help(tp.titel)
+                }
+                Text(verbatim: lv.status.name)
+                    .font(Thema.ui(12))
+                    .foregroundStyle(lv.status == .offen ? Thema.tinteTertiaer : Thema.tinte)
+                    .frame(width: 96, alignment: .trailing)
             }
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .overlay(alignment: .bottom) { Haarlinie() }
     }
 }
 
-/// Karte einer Lehrveranstaltung in der Semesterübersicht.
-struct LVKarte: View {
-    let lv: Lehrveranstaltung
-    let freigabe: Freigabe
+/// Frist mit Abhaken.
+struct FristZeile: View {
+    @Bindable var frist: Frist
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Text(lv.lfdNrAnzeige)
-                    .font(.subheadline.monospacedDigit().weight(.bold))
-                    .foregroundStyle(lv.farbe)
-                Spacer()
-                ForEach(lv.stoffgebiete) { gebiet in
-                    StoffgebietMarke(stoffgebiet: gebiet)
+        HStack(alignment: .firstTextBaseline, spacing: 14) {
+            Button {
+                frist.erledigt.toggle()
+            } label: {
+                Circle()
+                    .strokeBorder(Thema.tinte, lineWidth: 1.2)
+                    .background(Circle().fill(frist.erledigt ? Thema.tinte : Color.clear))
+                    .frame(width: 14, height: 14)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(frist.erledigt ? "Als offen markieren" : "Als erledigt markieren")
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verbatim: frist.titel)
+                    .font(Thema.ui(14))
+                    .strikethrough(frist.erledigt)
+                    .foregroundStyle(frist.erledigt ? Thema.tinteTertiaer : Thema.tinte)
+                if let datum = frist.datum {
+                    Text(verbatim: datum.datumMitWochentag)
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteSekundaer)
+                }
+                if !frist.hinweis.isEmpty {
+                    Text(verbatim: frist.hinweis)
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteTertiaer)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Text(lv.bezeichnung)
-                .font(.headline)
-                .multilineTextAlignment(.leading)
-                .lineLimit(3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text(verbatim: [lv.lehrform.kuerzel, lv.swsAnzeige, lv.leistungsnachweis.isEmpty ? nil : "LN \(lv.leistungsnachweis)"]
-                .compactMap { $0 }.joined(separator: " · "))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            if !lv.dozenten.isEmpty {
-                Text(lv.dozenten.joined(separator: ", "))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            HStack {
-                StatusMarke(status: lv.status)
-                Spacer()
-                if freigabe != .bestanden {
-                    Image(systemName: freigabe.symbol)
-                        .foregroundStyle(freigabe.farbe)
-                        .help(freigabe.name)
-                        .accessibilityLabel(freigabe.name)
-                }
-            }
-            if let tp = lv.naechsteTeilpruefung, let datum = tp.datum {
-                HStack(spacing: 6) {
-                    Image(systemName: tp.typ.symbol)
-                    Text(tp.titel).lineLimit(1)
-                    Spacer()
-                    CountdownText(datum: datum)
-                }
-                .font(.caption)
+            Spacer(minLength: 12)
+            if let datum = frist.datum, !frist.erledigt {
+                Text(verbatim: Countdown.text(tage: Countdown.tage(bis: datum)))
+                    .font(Thema.mono(12))
+                    .foregroundStyle(Thema.tinteSekundaer)
             }
         }
-        .padding(Layout.abstand)
-        .padding(.leading, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: Layout.eckenradius))
-        .overlay(alignment: .leading) {
-            UnevenRoundedRectangle(topLeadingRadius: Layout.eckenradius, bottomLeadingRadius: Layout.eckenradius)
-                .fill(lv.farbe)
-                .frame(width: 5)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: Layout.eckenradius))
+        .padding(.vertical, 16)
+        .overlay(alignment: .bottom) { Haarlinie() }
     }
 }

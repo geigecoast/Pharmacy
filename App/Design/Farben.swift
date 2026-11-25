@@ -29,29 +29,15 @@ extension Color {
     }
 }
 
-extension Stoffgebiet {
-    /// Jedes Stoffgebiet hat eine eigene, ruhige Farbe.
-    var farbe: Color {
-        switch self {
-        case .e: Color(hell: 0x2A9D8F, dunkel: 0x5CC8BA)
-        case .f: Color(hell: 0xD9773A, dunkel: 0xF0A070)
-        case .g: Color(hell: 0x5A9E4B, dunkel: 0x8CC77E)
-        case .h: Color(hell: 0x3A6EA5, dunkel: 0x74A6DC)
-        case .i: Color(hell: 0x8E5BA8, dunkel: 0xBC94D4)
-        case .k: Color(hell: 0x8A7F72, dunkel: 0xB8AEA2)
-        }
-    }
-}
-
 extension LVStatus {
     var farbe: Color {
         switch self {
-        case .offen: .secondary
-        case .angemeldet: .orange
-        case .laeuft: .blue
-        case .bestanden: .green
-        case .nichtBestanden: .red
-        case .wiederholung: .pink
+        case .offen: Thema.tinteTertiaer
+        case .angemeldet: Thema.tinte
+        case .laeuft: Thema.tinte
+        case .bestanden: Thema.tinteTertiaer
+        case .nichtBestanden: Stoffgebiet.i.farbe
+        case .wiederholung: Stoffgebiet.i.farbe
         }
     }
 
@@ -70,15 +56,16 @@ extension LVStatus {
 extension Freigabe {
     var farbe: Color {
         switch self {
-        case .bestanden: .green
-        case .freigeschaltet: .blue
-        case .blockiert: .secondary
+        case .bestanden: Thema.tinteTertiaer
+        case .freigeschaltet: Thema.tinte
+        case .blockiert: Thema.tinteTertiaer
         }
     }
 }
 
 extension Lehrveranstaltung {
-    var farbe: Color { hauptStoffgebiet?.farbe ?? .accentColor }
+    var farbe: Color { hauptStoffgebiet?.farbe ?? Thema.tinteTertiaer }
+    var hintergrundfarbe: Color { hauptStoffgebiet?.hintergrund ?? Thema.flaecheGedaempft }
 }
 
 enum Layout {

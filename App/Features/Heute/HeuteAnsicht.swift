@@ -2,45 +2,49 @@ import SwiftUI
 import SwiftData
 import PharmaCore
 
+/// Startbildschirm „Heute lernen“ nach Design.
 struct HeuteAnsicht: View {
     @Binding var auswahl: Bereich?
+
     @Environment(\.modelContext) private var kontext
     @Query private var alleTeilpruefungen: [Teilpruefung]
     @Query private var alleFristen: [Frist]
     @Query private var alleLerneinheiten: [Lerneinheit]
+    @Query(sort: \Semester.sortierung) private var alleSemester: [Semester]
+    @AppStorage(EinstellungsSchluessel.vorname) private var vorname = ""
+    @AppStorage(EinstellungsSchluessel.lernstartMinuten) private var lernstart = Standardwerte.lernstartMinuten
+    @AppStorage(EinstellungsSchluessel.lvTab) private var lvTab: LVTab = .vorlesungen
 
-    private struct Termin: Identifiable {
-        let teilpruefung: Teilpruefung
-        let lv: Lehrveranstaltung
-        let datum: Date
-        var id: PersistentIdentifier { teilpruefung.persistentModelID }
-    }
+    private let kalender = Calendar.deutsch
 
-    private var naechsteTermine: [Termin] {
-        let heute = Calendar.current.startOfDay(for: Date())
-        return alleTeilpruefungen.compactMap { tp in
-            guard let lv = tp.lehrveranstaltung, !lv.status.istAbgeschlossen,
-                  tp.ergebnis == .offen, let datum = tp.datum, datum >= heute else { return nil }
-            return Termin(teilpruefung: tp, lv: lv, datum: datum)
-        }
-        .sorted { $0.datum < $1.datum }
-    }
-
-    private var offeneFristen: [Frist] {
-        alleFristen.filter { !$0.erledigt }
-            .sorted { ($0.datum ?? .distantFuture) < ($1.datum ?? .distantFuture) }
-    }
+    // MARK: Daten
 
     private var heutigeEinheiten: [Lerneinheit] {
         alleLerneinheiten
-            .filter { Calendar.current.isDateInToday($0.tag) }
-            .sorted { ($0.erledigt ? 1 : 0, $0.thema) < ($1.erledigt ? 1 : 0, $1.thema) }
+            .filter { kalender.isDateInToday($0.tag) }
+            .sorted { ($0.manuell ? 0 : 1, $0.thema) < ($1.manuell ? 0 : 1, $1.thema) }
     }
 
-    /// Anmeldepflichtige Teilprüfungen ohne Anmeldung, deren Anmeldeschluss in den nächsten 30 Tagen liegt.
+    /// Anstehende Teilprüfungen mit Termin, nach Datum.
+    private var anstehend: [Teilpruefung] {
+        let heute = kalender.startOfDay(for: Date())
+        return alleTeilpruefungen
+            .filter { tp in
+                guard let lv = tp.lehrveranstaltung, !lv.status.istAbgeschlossen, tp.ergebnis == .offen,
+                      let datum = tp.datum else { return false }
+                return datum >= heute
+            }
+            .sorted { ($0.datum ?? .distantFuture) < ($1.datum ?? .distantFuture) }
+    }
+
+    private var offeneFristen: [Frist] {
+        alleFristen.filter { !$0.erledigt && $0.datum != nil }
+            .sorted { ($0.datum ?? .distantFuture) < ($1.datum ?? .distantFuture) }
+    }
+
     private var offeneAnmeldungen: [Teilpruefung] {
-        let heute = Calendar.current.startOfDay(for: Date())
-        let grenze = Calendar.current.date(byAdding: .day, value: 30, to: heute) ?? heute
+        let heute = kalender.startOfDay(for: Date())
+        let grenze = kalender.date(byAdding: .day, value: 30, to: heute) ?? heute
         return alleTeilpruefungen
             .filter { tp in
                 guard tp.anmeldepflichtig, !tp.angemeldet, tp.ergebnis == .offen,
@@ -51,195 +55,401 @@ struct HeuteAnsicht: View {
             .sorted { ($0.anmeldeschluss ?? .distantFuture) < ($1.anmeldeschluss ?? .distantFuture) }
     }
 
-    private var ohneTermin: Int {
-        alleTeilpruefungen.filter { tp in
-            guard let lv = tp.lehrveranstaltung, lv.semester?.istAktuell == true else { return false }
-            return tp.datum == nil && tp.ergebnis == .offen && !lv.status.istAbgeschlossen
-        }.count
+    /// Tage mit mindestens einer erledigten Lerneinheit.
+    private var lerntage: Set<Date> {
+        Set(alleLerneinheiten.filter(\.erledigt).map { kalender.startOfDay(for: $0.erledigtAm ?? $0.tag) })
     }
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Layout.abstand) {
-                Text(Date().datumMitWochentag)
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
+    /// Lernserie: aufeinanderfolgende Lerntage bis heute (heute darf noch offen sein).
+    private var lernserie: Int {
+        let tage = lerntage
+        var tag = kalender.startOfDay(for: Date())
+        if !tage.contains(tag), let gestern = kalender.date(byAdding: .day, value: -1, to: tag) { tag = gestern }
+        var serie = 0
+        while tage.contains(tag) {
+            serie += 1
+            guard let davor = kalender.date(byAdding: .day, value: -1, to: tag) else { break }
+            tag = davor
+        }
+        return serie
+    }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: Layout.abstand, alignment: .top)],
-                          spacing: Layout.abstand) {
-                    naechstePruefungKarte
-                    fristenKarte
-                    lernplanKarte
-                    Karte(titel: Text("Fällige Karteikarten"), symbol: "rectangle.on.rectangle.angled", farbe: .indigo) {
-                        Text("Karteikarten mit Wiederholungsplanung (FSRS) folgen in Ausbaustufe d.")
-                            .foregroundStyle(.secondary)
-                    }
-                    Karte(titel: Text("Schnellquiz"), symbol: "bolt.circle", farbe: .orange) {
-                        Text("Das 5-Minuten-Quiz folgt in Ausbaustufe d.")
-                            .foregroundStyle(.secondary)
-                    }
-                    Karte(titel: Text("Lernserie"), symbol: "flame", farbe: .red) {
-                        Text("Lernserie, XP und Abzeichen folgen in Ausbaustufe h.")
-                            .foregroundStyle(.secondary)
+    private func bereitschaft(_ tp: Teilpruefung) -> Double {
+        guard tp.lernaufwandMinuten > 0 else { return 0 }
+        let erledigt = (tp.lerneinheiten ?? []).filter(\.erledigt).reduce(0) { $0 + $1.dauerMinuten }
+        return min(1, Double(erledigt) / Double(tp.lernaufwandMinuten))
+    }
+
+    private var begruessung: String {
+        let stunde = kalender.component(.hour, from: Date())
+        switch stunde {
+        case 5..<11: return "Guten Morgen"
+        case 11..<18: return "Guten Tag"
+        default: return "Guten Abend"
+        }
+    }
+
+    private var aktuellesSemester: Semester? { alleSemester.first(where: \.istAktuell) }
+
+    private var zusammenfassung: String {
+        var saetze: [String] = []
+        let offen = heutigeEinheiten.filter { !$0.erledigt }.count
+        switch offen {
+        case 0: saetze.append(heutigeEinheiten.isEmpty ? "Heute ist nichts geplant." : "Alle Lerneinheiten für heute sind erledigt.")
+        case 1: saetze.append("Eine Lerneinheit steht heute an.")
+        default: saetze.append("\(Zahlwort.text(offen, grossAmAnfang: true)) Lerneinheiten stehen heute an.")
+        }
+        if let tp = anstehend.first, let datum = tp.datum {
+            let tage = Countdown.tage(bis: datum)
+            saetze.append("Die \(tp.titel)\(tp.lehrveranstaltung.map { " " + LfdNr.anzeige($0.lfdNr) } ?? "") ist \(Countdown.text(tage: tage)).")
+        }
+        return saetze.joined(separator: " ")
+    }
+
+    // MARK: Ansicht
+
+    var body: some View {
+        GeometryReader { geo in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 44) {
+                    kopf
+                    if geo.size.width > 980 {
+                        HStack(alignment: .top, spacing: 56) {
+                            linkeSpalte.frame(maxWidth: .infinity)
+                            rechteSpalte.frame(width: 380)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 44) {
+                            rechteSpalte
+                            linkeSpalte
+                        }
                     }
                 }
+                .frame(maxWidth: 1180, alignment: .leading)
+                .padding(.horizontal, geo.size.width > 700 ? Thema.randAussen + 24 : Thema.randKompakt)
+                .padding(.vertical, 48)
             }
-            .padding(Layout.abstand)
         }
+        .background(Thema.flaeche)
         .navigationTitle("Heute lernen")
     }
 
-    private var naechstePruefungKarte: some View {
-        Karte(titel: Text("Nächste Teilprüfungen"), symbol: "hourglass", farbe: .red) {
-            if naechsteTermine.isEmpty {
-                Text("Noch keine Prüfungstermine eingetragen.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(naechsteTermine.prefix(4)) { termin in
-                    Button {
-                        auswahl = .lehrveranstaltung(termin.lv)
-                    } label: {
-                        HStack(alignment: .firstTextBaseline) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(verbatim: "\(termin.lv.lfdNrAnzeige) \(termin.teilpruefung.titel)")
-                                    .lineLimit(2)
-                                Text(termin.datum.datumMitWochentag)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            CountdownText(datum: termin.datum)
-                                .font(.callout.weight(.semibold))
+    private var kopf: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(verbatim: [Date().formatted(.dateTime.weekday(.wide).day().month(.wide).locale(.deutsch)),
+                            aktuellesSemester?.titel].compactMap { $0 }.joined(separator: " · "))
+                .font(Thema.ui(13))
+                .foregroundStyle(Thema.tinteSekundaer)
+            Text(gruss)
+                .lineLimit(2)
+                .minimumScaleFactor(0.6)
+            Text(verbatim: zusammenfassung)
+                .font(Thema.ui(16))
+                .foregroundStyle(Thema.tinteSekundaer)
+                .lineSpacing(5)
+                .frame(maxWidth: 560, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// „Guten Morgen, *Ann.*“ – der Name kursiv.
+    private var gruss: AttributedString {
+        let name = vorname.trimmingCharacters(in: .whitespaces)
+        var anfang = AttributedString(name.isEmpty ? "\(begruessung)." : "\(begruessung), ")
+        anfang.font = Thema.display(60)
+        anfang.foregroundColor = Thema.tinte
+        guard !name.isEmpty else { return anfang }
+        var kursiv = AttributedString("\(name).")
+        kursiv.font = Thema.display(60, kursiv: true)
+        kursiv.foregroundColor = Thema.tinte
+        return anfang + kursiv
+    }
+
+    // MARK: Linke Spalte: Plan
+
+    private var linkeSpalte: some View {
+        VStack(alignment: .leading, spacing: 44) {
+            VStack(alignment: .leading, spacing: 0) {
+                let einheiten = heutigeEinheiten
+                Abschnittstitel(titel: "Heutiger Plan") {
+                    Text("\(einheiten.filter(\.erledigt).count) von \(einheiten.count) erledigt")
+                }
+                if einheiten.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Heute ist nichts geplant.")
+                            .font(Thema.ui(15))
+                            .foregroundStyle(Thema.tinte)
+                        Text("Der Lernplan entsteht aus deinen Prüfungsterminen und Lernzeiten. Trag Termine unter „Prüfungsvorbereitung“ ein.")
+                            .font(Thema.ui(13))
+                            .foregroundStyle(Thema.tinteSekundaer)
+                        HStack(spacing: 16) {
+                            Button("Zum Kalender") { auswahl = .kalender }
+                            Button("Lernplan berechnen") { LernplanDienst.aktualisieren(kontext) }
                         }
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .font(Thema.ui(13, .mittel))
+                        .foregroundStyle(Thema.tinte)
+                        .underline()
                     }
-                    .buttonStyle(.plain)
+                    .padding(.vertical, 20)
+                } else {
+                    ForEach(zeitplan(einheiten)) { eintrag in
+                        PlanZeile(einheit: eintrag.einheit, uhrzeit: eintrag.uhrzeit)
+                    }
                 }
             }
-            if ohneTermin > 0 {
-                Text("\(ohneTermin) Teilprüfungen im aktuellen Semester haben noch keinen Termin.")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+
+            if !offeneAnmeldungen.isEmpty || !offeneFristen.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    Abschnittstitel("Fristen & Anmeldungen")
+                    ForEach(offeneAnmeldungen) { tp in
+                        FristenZeile(titel: "QIS/LSF-Anmeldung: \(tp.titelMitLfdNr)",
+                                     hinweis: "Verspätete Anmeldung ist nicht möglich.",
+                                     datum: tp.anmeldeschluss, farbe: tp.lehrveranstaltung?.farbe ?? Thema.tinteTertiaer) {
+                            if let lv = tp.lehrveranstaltung { auswahl = .lehrveranstaltung(lv) }
+                        }
+                    }
+                    ForEach(offeneFristen.prefix(4)) { frist in
+                        FristenZeile(titel: frist.titel, hinweis: frist.hinweis, datum: frist.datum,
+                                     farbe: frist.lehrveranstaltung?.farbe ?? Thema.tinteTertiaer) {
+                            frist.erledigt = true
+                        }
+                    }
+                }
             }
         }
     }
 
-    private var lernplanKarte: some View {
-        Karte(titel: Text("Lernplan für heute"), symbol: "list.bullet.clipboard", farbe: .teal) {
-            let einheiten = heutigeEinheiten
-            if einheiten.isEmpty {
-                Text("Heute ist nichts geplant. Der Lernplan entsteht automatisch aus deinen Prüfungsterminen und Lernzeiten.")
-                    .foregroundStyle(.secondary)
-            } else {
-                let erledigt = einheiten.filter(\.erledigt).reduce(0) { $0 + $1.dauerMinuten }
-                let gesamt = einheiten.reduce(0) { $0 + $1.dauerMinuten }
-                ProgressView(value: Double(erledigt), total: Double(max(gesamt, 1))) {
-                    Text("\(Dauer.text(minuten: erledigt)) von \(Dauer.text(minuten: gesamt)) erledigt")
-                        .font(.caption)
-                }
-                ForEach(einheiten) { einheit in
-                    HeuteLerneinheit(einheit: einheit)
-                }
-            }
-            HStack {
-                Button("Zum Kalender") { auswahl = .kalender }
-                Spacer()
-                Button("Neu berechnen") { LernplanDienst.aktualisieren(kontext) }
-            }
-            .buttonStyle(.borderless)
-            .font(.callout)
-        }
+    /// Ordnet den Einheiten Uhrzeiten zu: ab Lernbeginn, mit 15 Minuten Pause dazwischen.
+    private struct PlanEintrag: Identifiable {
+        let einheit: Lerneinheit
+        let uhrzeit: Date
+        var id: UUID { einheit.kennung }
     }
 
-    private var fristenKarte: some View {
-        Karte(titel: Text("Fristen & Anmeldungen"), symbol: "calendar.badge.exclamationmark", farbe: .orange) {
-            ForEach(offeneAnmeldungen) { tp in
+    private func zeitplan(_ einheiten: [Lerneinheit]) -> [PlanEintrag] {
+        var zeit = kalender.date(bySettingHour: lernstart / 60, minute: lernstart % 60, second: 0, of: Date()) ?? Date()
+        var ergebnis: [PlanEintrag] = []
+        for einheit in einheiten {
+            ergebnis.append(PlanEintrag(einheit: einheit, uhrzeit: zeit))
+            zeit = zeit.addingTimeInterval(Double(einheit.dauerMinuten + 15) * 60)
+        }
+        return ergebnis
+    }
+
+    // MARK: Rechte Spalte
+
+    private var rechteSpalte: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let tp = anstehend.first, let datum = tp.datum {
+                let tage = max(0, Countdown.tage(bis: datum))
+                let wert = bereitschaft(tp)
                 Button {
-                    if let lv = tp.lehrveranstaltung { auswahl = .lehrveranstaltung(lv) }
+                    if let lv = tp.lehrveranstaltung {
+                        lvTab = .pruefung
+                        auswahl = .lehrveranstaltung(lv)
+                    }
                 } label: {
-                    HStack(alignment: .firstTextBaseline) {
-                        Label {
-                            Text("QIS/LSF-Anmeldung: \(tp.titelMitLfdNr)")
-                        } icon: {
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Kleintitel(text: "Nächste Teilprüfung")
+                        GrosseZahl(zahl: "\(tage)", einheit: tage == 1 ? "Tag" : "Tage", groesse: 88)
+                            .padding(.top, -4)
+                        Text(verbatim: tp.titel)
+                            .font(Thema.ui(15))
+                            .foregroundStyle(Thema.tinte)
+                            .padding(.top, 14)
+                        HStack(spacing: 6) {
+                            LfdNrText(text: tp.lehrveranstaltung.map { LfdNr.anzeige($0.lfdNr) } ?? "", groesse: 12,
+                                      farbe: Thema.tinteSekundaer)
+                            Text(verbatim: "· " + datum.formatted(.dateTime.weekday(.abbreviated).day().month(.wide).hour().minute().locale(.deutsch)))
+                                .font(Thema.ui(13))
+                                .foregroundStyle(Thema.tinteSekundaer)
                         }
-                        Spacer()
-                        if let schluss = tp.anmeldeschluss {
-                            CountdownText(datum: schluss).font(.caption)
-                        }
+                        .padding(.top, 6)
+                        Fortschrittslinie(wert: wert)
+                            .padding(.top, 18)
+                        Text("Prüfungsbereitschaft \(Int((wert * 100).rounded())) %")
+                            .font(Thema.ui(12))
+                            .foregroundStyle(Thema.tinteSekundaer)
+                            .padding(.top, 10)
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-            }
-            if offeneFristen.isEmpty && offeneAnmeldungen.isEmpty {
-                Text("Keine offenen Fristen.")
-                    .foregroundStyle(.secondary)
+                .help("Prüfungsbereitschaft = erledigte Lernzeit im Verhältnis zum geplanten Lernaufwand")
             } else {
-                ForEach(offeneFristen.prefix(4)) { frist in
-                    FristZeile(frist: frist)
+                Kleintitel(text: "Nächste Teilprüfung")
+                Text("Noch keine Prüfungstermine eingetragen.")
+                    .font(Thema.ui(15))
+                    .foregroundStyle(Thema.tinteSekundaer)
+                    .padding(.top, 12)
+            }
+
+            Haarlinie().padding(.vertical, 28)
+
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(verbatim: "–").font(Thema.display(40))
+                    Text("Karten fällig").font(Thema.ui(13)).foregroundStyle(Thema.tinteSekundaer)
                 }
+                .help("Karteikarten folgen in Ausbaustufe d")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(verbatim: "\(lernserie)").font(Thema.display(40))
+                    Text(lernserie == 1 ? "Tag Lernserie" : "Tage Lernserie").font(Thema.ui(13)).foregroundStyle(Thema.tinteSekundaer)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .foregroundStyle(Thema.tinte)
+
+            Wochenleiste(lerntage: lerntage, kalender: kalender)
+                .padding(.top, 28)
+
+            if let tp = anstehend.first, let lv = tp.lehrveranstaltung {
+                Aktionskarte(titel: "Schnellquiz starten", untertitel: "5 Minuten · \(lv.anzeigename) \(LfdNr.anzeige(lv.lfdNr))") {
+                    lvTab = .quiz
+                    auswahl = .lehrveranstaltung(lv)
+                }
+                .padding(.top, 40)
             }
         }
     }
 }
 
-struct FristZeile: View {
-    @Bindable var frist: Frist
+/// Eine Zeile im Tagesplan: Uhrzeit · Kreis zum Abhaken · Titel · Dauer.
+private struct PlanZeile: View {
+    @Bindable var einheit: Lerneinheit
+    let uhrzeit: Date
+
+    private var titel: String {
+        if let tp = einheit.teilpruefung { return "Vorbereitung: \(tp.titel)" }
+        return einheit.thema
+    }
+
+    private var meta: String {
+        guard let lv = einheit.lehrveranstaltung else { return "" }
+        return "\(LfdNr.anzeige(lv.lfdNr)) · \(lv.anzeigename)"
+    }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Button {
-                frist.erledigt.toggle()
-            } label: {
-                Image(systemName: frist.erledigt ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(frist.erledigt ? Color.green : Color.secondary)
+        VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text(verbatim: uhrzeit.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute().locale(.deutsch)))
+                    .font(Thema.mono(13))
+                    .foregroundStyle(Thema.tinteSekundaer)
+                    .frame(width: 70, alignment: .leading)
+                Button {
+                    einheit.umschalten()
+                } label: {
+                    Circle()
+                        .strokeBorder(Thema.tinte, lineWidth: 1.2)
+                        .background(Circle().fill(einheit.erledigt ? Thema.tinte : Color.clear))
+                        .frame(width: 15, height: 15)
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(einheit.erledigt ? "Als offen markieren" : "Als erledigt markieren")
+                .padding(.trailing, 18)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(verbatim: titel)
+                        .font(Thema.ui(15))
+                        .strikethrough(einheit.erledigt)
+                        .foregroundStyle(einheit.erledigt ? Thema.tinteTertiaer : Thema.tinte)
+                    if !meta.isEmpty {
+                        HStack(spacing: 7) {
+                            Punkt(farbe: einheit.farbe)
+                            Text(verbatim: meta)
+                                .font(Thema.ui(12))
+                                .foregroundStyle(Thema.tinteSekundaer)
+                        }
+                    }
+                    if einheit.verpasst {
+                        Text("verpasst")
+                            .font(Thema.ui(11))
+                            .foregroundStyle(Stoffgebiet.i.farbe)
+                    }
+                }
+                Spacer(minLength: 12)
+                Text(verbatim: Dauer.text(minuten: einheit.dauerMinuten))
+                    .font(Thema.ui(13))
+                    .foregroundStyle(Thema.tinteSekundaer)
+            }
+            .padding(.vertical, 20)
+            Haarlinie()
+        }
+    }
+}
+
+private struct FristenZeile: View {
+    let titel: String
+    let hinweis: String
+    let datum: Date?
+    let farbe: Color
+    var aktion: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button(action: aktion) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Punkt(farbe: farbe)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(verbatim: titel).font(Thema.ui(14)).foregroundStyle(Thema.tinte)
+                        if !hinweis.isEmpty {
+                            Text(verbatim: hinweis)
+                                .font(Thema.ui(12))
+                                .foregroundStyle(Thema.tinteSekundaer)
+                                .lineLimit(2)
+                        }
+                    }
+                    Spacer(minLength: 12)
+                    if let datum {
+                        Text(verbatim: Countdown.text(tage: Countdown.tage(bis: datum)))
+                            .font(Thema.mono(12))
+                            .foregroundStyle(Thema.tinteSekundaer)
+                    }
+                }
+                .padding(.vertical, 16)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(frist.erledigt ? "Als offen markieren" : "Als erledigt markieren")
+            Haarlinie()
+        }
+    }
+}
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(frist.titel)
-                    .strikethrough(frist.erledigt)
-                if let datum = frist.datum {
-                    Text(datum.datumMitWochentag)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+/// Mo–So: gefüllt = gelernt, umrandet = heute.
+struct Wochenleiste: View {
+    let lerntage: Set<Date>
+    let kalender: Calendar
+
+    var body: some View {
+        let start = kalender.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+        let tage = (0..<7).compactMap { kalender.date(byAdding: .day, value: $0, to: start) }
+        HStack(spacing: 7) {
+            ForEach(tage, id: \.self) { tag in
+                let gelernt = lerntage.contains(kalender.startOfDay(for: tag))
+                let heute = kalender.isDateInToday(tag)
+                VStack(spacing: 8) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(gelernt ? Thema.tinte : Color.clear)
+                        .overlay(RoundedRectangle(cornerRadius: 3)
+                            .strokeBorder(heute ? Thema.tinte : Thema.rahmen, lineWidth: heute ? 1.2 : 1))
+                        .frame(height: 28)
+                    Text(verbatim: tag.formatted(.dateTime.weekday(.abbreviated).locale(.deutsch)).replacingOccurrences(of: ".", with: ""))
+                        .font(Thema.ui(11))
+                        .foregroundStyle(Thema.tinteTertiaer)
                 }
-                if !frist.hinweis.isEmpty {
-                    Text(frist.hinweis)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            if let datum = frist.datum, !frist.erledigt {
-                CountdownText(datum: datum).font(.caption)
             }
         }
     }
 }
 
-private struct HeuteLerneinheit: View {
-    @Bindable var einheit: Lerneinheit
-
-    var body: some View {
-        Button {
-            einheit.umschalten()
-        } label: {
-            HStack(alignment: .firstTextBaseline) {
-                Image(systemName: einheit.erledigt ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(einheit.erledigt ? Color.green : einheit.farbe)
-                Text(einheit.thema)
-                    .strikethrough(einheit.erledigt)
-                    .lineLimit(2)
-                Spacer()
-                Text(verbatim: Dauer.text(minuten: einheit.dauerMinuten))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+/// Zahlwörter für kurze Zusammenfassungen („Vier Lerneinheiten …“).
+enum Zahlwort {
+    static func text(_ zahl: Int, grossAmAnfang: Bool = false) -> String {
+        let woerter = ["null", "eins", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "elf", "zwölf"]
+        guard zahl >= 0, zahl < woerter.count else { return "\(zahl)" }
+        let wort = zahl == 1 ? "eine" : woerter[zahl]
+        return grossAmAnfang ? wort.prefix(1).uppercased() + wort.dropFirst() : wort
     }
 }

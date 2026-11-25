@@ -39,6 +39,10 @@ enum EinstellungsSchluessel {
     static let zulassungPh1 = "zulassungPh1"
     static let onboardingAbgeschlossen = "onboardingAbgeschlossen"
     static let ausgewaehltesSemester = "ausgewaehltesSemester"
+    static let vorname = "vorname"
+    static let erscheinungsbild = "erscheinungsbild"
+    static let lernstartMinuten = "lernstartMinuten"
+    static let lvTab = "lvTab"
 
     // Lernplan
     static let lernzeiten = "lernzeitenWoche"
@@ -62,6 +66,7 @@ enum Standardwerte {
     static let vorlaufTage = 28
     static let praktikumMinuten = 60
     static let erinnerungUhrzeitMinuten = 17 * 60
+    static let lernstartMinuten = 8 * 60 + 30
 
     static var wochenplan: Wochenplan {
         UserDefaults.standard.string(forKey: EinstellungsSchluessel.lernzeiten).flatMap(Wochenplan.init(rawValue:)) ?? .standard

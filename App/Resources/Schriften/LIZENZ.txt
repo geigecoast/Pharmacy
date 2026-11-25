@@ -1,0 +1,10 @@
+Schriften in diesem Ordner
+
+- Newsreader – Copyright 2020 The Newsreader Project Authors (https://github.com/productiontype/Newsreader)
+- Geist und Geist Mono – Copyright 2024 Vercel, in collaboration with basement.studio (https://github.com/vercel/geist-font)
+
+Alle Schriften stehen unter der SIL Open Font License, Version 1.1:
+https://openfontlicense.org
+
+Die Dateien sind statische Instanzen (lateinischer Zeichensatz) der variablen Originalschriften
+und wurden für PharmaTutor umbenannt (Präfix „PT“), wie es die Lizenz für veränderte Fassungen verlangt.

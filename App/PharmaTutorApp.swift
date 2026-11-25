@@ -7,6 +7,7 @@ struct PharmaTutorApp: App {
     private let fehlertext: String?
 
     init() {
+        Thema.schriftenRegistrieren()
         do {
             let schema = Schema(Datenschema.modelle)
             let konfiguration = ModelConfiguration(schema: schema, cloudKitDatabase: .none)
@@ -24,10 +25,14 @@ struct PharmaTutorApp: App {
                 HauptAnsicht()
                     .modelContainer(container)
                     .environment(\.locale, .deutsch)
+                    .erscheinungsbild()
             } else {
                 DatenbankFehlerAnsicht(details: fehlertext)
             }
         }
+        #if os(macOS)
+        .windowToolbarStyle(.unified(showsTitle: false))
+        #endif
         .commands {
             SidebarCommands()
             InspectorCommands()
@@ -39,6 +44,7 @@ struct PharmaTutorApp: App {
                 LVFenster(id: id)
                     .modelContainer(container)
                     .environment(\.locale, .deutsch)
+                    .erscheinungsbild()
             }
         }
 
@@ -47,6 +53,7 @@ struct PharmaTutorApp: App {
                 DokumentFenster(id: id)
                     .modelContainer(container)
                     .environment(\.locale, .deutsch)
+                    .erscheinungsbild()
             }
         }
 
@@ -63,6 +70,21 @@ struct PharmaTutorApp: App {
         }
         #endif
     }
+}
+
+/// Erscheinungsbild aus den Einstellungen (System, Hell, Dunkel).
+private struct Erscheinungsbild: ViewModifier {
+    @AppStorage(EinstellungsSchluessel.erscheinungsbild) private var wahl = "system"
+
+    func body(content: Content) -> some View {
+        content
+            .preferredColorScheme(wahl == "hell" ? .light : (wahl == "dunkel" ? .dark : nil))
+            .tint(Thema.tinte)
+    }
+}
+
+extension View {
+    func erscheinungsbild() -> some View { modifier(Erscheinungsbild()) }
 }
 
 extension Locale {

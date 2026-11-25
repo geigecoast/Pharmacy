@@ -3,7 +3,7 @@ import SwiftData
 import PDFKit
 import PharmaCore
 
-/// Öffnet eine Unterlage passend zu ihrem Typ.
+/// Eigenständige Ansicht einer Unterlage (aus der Suche oder in einem eigenen Fenster).
 struct DokumentAnsicht: View {
     @Bindable var dokument: Dokument
     var startSeite = 0
@@ -11,42 +11,65 @@ struct DokumentAnsicht: View {
     var oeffnen: (Dokument, Int) -> Void
 
     var body: some View {
-        Group {
-            switch dokument.typ {
-            case .pdf, .scan:
-                PDFDokumentAnsicht(dokument: dokument, startSeite: startSeite)
-            case .praesentation:
-                PraesentationsAnsicht(dokument: dokument)
-            case .audio:
-                AudioAnsicht(dokument: dokument, oeffnen: oeffnen)
-            }
-        }
-        .navigationTitle(dokument.titel)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button(action: zurueck) {
-                    Label(dokument.lehrveranstaltung?.lfdNrAnzeige ?? "Zurück", systemImage: "chevron.left")
+        DokumentArbeitsflaeche(dokument: dokument, startSeite: startSeite, oeffnen: oeffnen)
+            .navigationTitle(dokument.titel)
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Button(action: zurueck) {
+                        Label(dokument.lehrveranstaltung.map { LfdNr.anzeige($0.lfdNr) } ?? "Zurück", systemImage: "chevron.left")
+                    }
+                    .help("Zurück zur Lehrveranstaltung")
                 }
-                .help("Zurück zur Lehrveranstaltung")
             }
+    }
+}
+
+/// Leser plus Seitenpanel – je nach Typ der Unterlage.
+struct DokumentArbeitsflaeche: View {
+    @Bindable var dokument: Dokument
+    var startSeite = 0
+    var oeffnen: (Dokument, Int) -> Void
+
+    @State private var steuerung = PDFSteuerung()
+    @AppStorage("dokumentPanelSichtbar") private var zeigePanel = true
+
+    var body: some View {
+        switch dokument.typ {
+        case .pdf, .scan:
+            GeometryReader { geo in
+                HStack(spacing: 0) {
+                    PDFLeser(dokument: dokument, startSeite: startSeite, steuerung: steuerung, zeigePanel: $zeigePanel)
+                    if zeigePanel && geo.size.width > 640 {
+                        Rectangle().fill(Thema.linie).frame(width: 1)
+                        DokumentSeitenpanel(dokument: dokument, steuerung: steuerung)
+                            .frame(width: min(320, geo.size.width * 0.34))
+                    }
+                }
+            }
+            .id(dokument.persistentModelID)
+        case .praesentation:
+            PraesentationsAnsicht(dokument: dokument)
+        case .audio:
+            AudioAnsicht(dokument: dokument, oeffnen: oeffnen)
         }
     }
 }
 
-struct PDFDokumentAnsicht: View {
+/// PDF-Leser mit Kopfzeile („Seite 12 von 38“, Suche, Markierfarben).
+struct PDFLeser: View {
     @Bindable var dokument: Dokument
     let startSeite: Int
+    let steuerung: PDFSteuerung
+    @Binding var zeigePanel: Bool
 
     @Environment(\.modelContext) private var kontext
     @State private var pdf: PDFDocument?
     @State private var ladefehler = false
-    @State private var steuerung = PDFSteuerung()
     @State private var stiftModus = false
     @State private var geaenderteSeiten: Set<Int> = []
     @State private var suche = ""
     @State private var exportDatei: PDFDatei?
     @State private var zeigeExport = false
-    @AppStorage("dokumentInspectorSichtbar") private var zeigeInspector = true
 
     private var markierungsDaten: [PDFWerkzeuge.MarkierungsDaten] {
         dokument.sichtbareMarkierungen.map {
@@ -62,19 +85,21 @@ struct PDFDokumentAnsicht: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            if let pdf {
-                PDFAnzeige(pdf: pdf, steuerung: steuerung, markierungen: markierungsDaten, zeichnungen: zeichnungsDaten,
-                           startSeite: startSeite, stiftModus: stiftModus, zeichnungGeaendert: zeichnungSpeichern)
-                werkzeugleiste
-                    .padding(.bottom, 12)
-            } else if ladefehler {
-                ContentUnavailableView("Dokument kann nicht geöffnet werden", systemImage: "exclamationmark.triangle",
-                                       description: Text("Die Datei ist beschädigt oder leer."))
-            } else {
-                ProgressView("Dokument wird geladen …")
+        VStack(spacing: 0) {
+            kopfzeile
+            ZStack {
+                if let pdf {
+                    PDFAnzeige(pdf: pdf, steuerung: steuerung, markierungen: markierungsDaten, zeichnungen: zeichnungsDaten,
+                               startSeite: startSeite, stiftModus: stiftModus, zeichnungGeaendert: zeichnungSpeichern)
+                } else if ladefehler {
+                    ContentUnavailableView("Dokument kann nicht geöffnet werden", systemImage: "exclamationmark.triangle",
+                                           description: Text("Die Datei ist beschädigt oder leer."))
+                } else {
+                    ProgressView("Dokument wird geladen …")
+                }
             }
         }
+        .background(Thema.flaecheGedaempft)
         .task {
             guard pdf == nil else { return }
             if let daten = dokument.daten, let geladen = PDFDocument(data: daten) {
@@ -82,30 +107,6 @@ struct PDFDokumentAnsicht: View {
             } else {
                 ladefehler = true
             }
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                suchfeld
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    exportieren()
-                } label: {
-                    Label("Mit Markierungen exportieren", systemImage: "square.and.arrow.up")
-                }
-                .help("Als PDF mit Markierungen und Handschrift exportieren")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    zeigeInspector.toggle()
-                } label: {
-                    Label("Details", systemImage: "sidebar.trailing")
-                }
-            }
-        }
-        .inspector(isPresented: $zeigeInspector) {
-            DokumentInspector(dokument: dokument, steuerung: steuerung)
-                .inspectorColumnWidth(min: 260, ideal: 310, max: 440)
         }
         .fileExporter(isPresented: $zeigeExport, document: exportDatei, contentType: .pdf,
                       defaultFilename: dokument.titel) { _ in }
@@ -117,72 +118,88 @@ struct PDFDokumentAnsicht: View {
         }
     }
 
-    private var suchfeld: some View {
-        HStack(spacing: 4) {
-            TextField("Im Dokument suchen", text: $suche)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 190)
-                .onSubmit { steuerung.suchen(suche) }
-            if steuerung.trefferAnzahl > 0 {
-                Text(verbatim: "\(steuerung.trefferIndex + 1)/\(steuerung.trefferAnzahl)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Button { steuerung.naechsterTreffer(-1) } label: { Label("Vorheriger Treffer", systemImage: "chevron.up") }
-                Button { steuerung.naechsterTreffer(1) } label: { Label("Nächster Treffer", systemImage: "chevron.down") }
-            }
-        }
-        .labelStyle(.iconOnly)
-    }
+    private var kopfzeile: some View {
+        HStack(spacing: 14) {
+            Text("Seite \(steuerung.aktuelleSeite + 1) von \(max(steuerung.seitenzahl, dokument.seitenzahl))")
+                .font(Thema.ui(12))
+                .foregroundStyle(Thema.tinteSekundaer)
+                .monospacedDigit()
+            Spacer(minLength: 8)
 
-    private var werkzeugleiste: some View {
-        HStack(spacing: 12) {
-            ForEach(MarkierungsFarbe.allCases) { farbe in
-                Button {
-                    steuerung.markieren(farbe, dokument: dokument, kontext: kontext)
-                } label: {
-                    Circle()
-                        .fill(farbe.farbe)
-                        .frame(width: 24, height: 24)
-                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.25)))
+            HStack(spacing: 4) {
+                TextField("Suchen", text: $suche)
+                    .textFieldStyle(.plain)
+                    .font(Thema.ui(12))
+                    .frame(width: 120)
+                    .onSubmit { steuerung.suchen(suche) }
+                if steuerung.trefferAnzahl > 0 {
+                    Text(verbatim: "\(steuerung.trefferIndex + 1)/\(steuerung.trefferAnzahl)")
+                        .font(Thema.mono(11))
+                        .foregroundStyle(Thema.tinteTertiaer)
+                    Button { steuerung.naechsterTreffer(-1) } label: { Image(systemName: "chevron.up") }
+                        .accessibilityLabel("Vorheriger Treffer")
+                    Button { steuerung.naechsterTreffer(1) } label: { Image(systemName: "chevron.down") }
+                        .accessibilityLabel("Nächster Treffer")
                 }
-                .buttonStyle(.plain)
-                .help("\(farbe.name): \(farbe.bedeutung)")
-                .accessibilityLabel("Markieren: \(farbe.bedeutung)")
             }
-            .disabled(!steuerung.hatAuswahl)
-            .opacity(steuerung.hatAuswahl ? 1 : 0.45)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Thema.flaeche, in: Capsule())
+            .overlay(Capsule().strokeBorder(Thema.rahmen))
 
-            Button {
-                steuerung.markierungEntfernen(dokument: dokument, kontext: kontext)
-            } label: {
-                Label("Markierung entfernen", systemImage: "eraser")
-                    .labelStyle(.iconOnly)
+            HStack(spacing: 7) {
+                ForEach(MarkierungsFarbe.allCases) { farbe in
+                    Button {
+                        steuerung.markieren(farbe, dokument: dokument, kontext: kontext)
+                    } label: {
+                        Circle()
+                            .fill(farbe.farbe)
+                            .overlay(Circle().strokeBorder(Color.black.opacity(0.08)))
+                            .frame(width: 16, height: 16)
+                    }
+                    .help("\(farbe.name) – \(farbe.bedeutung)")
+                    .accessibilityLabel("Markieren: \(farbe.bedeutung)")
+                }
+                .disabled(!steuerung.hatAuswahl)
+                .opacity(steuerung.hatAuswahl ? 1 : 0.55)
+
+                Button {
+                    steuerung.markierungEntfernen(dokument: dokument, kontext: kontext)
+                } label: {
+                    Image(systemName: "eraser")
+                }
+                .disabled(!steuerung.hatAuswahl)
+                .help("Markierungen in der Auswahl entfernen")
             }
-            .buttonStyle(.plain)
-            .disabled(!steuerung.hatAuswahl)
-            .help("Markierungen in der Auswahl entfernen")
 
             #if os(iOS)
-            Divider().frame(height: 22)
             Button {
                 stiftModus.toggle()
             } label: {
-                Label(stiftModus ? "Stift beenden" : "Mit Stift schreiben", systemImage: "pencil.tip.crop.circle")
-                    .labelStyle(.iconOnly)
-                    .foregroundStyle(stiftModus ? Color.accentColor : Color.primary)
+                Image(systemName: stiftModus ? "pencil.tip.crop.circle.fill" : "pencil.tip.crop.circle")
             }
-            .buttonStyle(.plain)
+            .help(stiftModus ? "Stift beenden" : "Mit Apple Pencil schreiben")
             #endif
 
-            Divider().frame(height: 22)
-            Text("Seite \(steuerung.aktuelleSeite + 1) von \(steuerung.seitenzahl)")
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.secondary)
+            Button {
+                exportieren()
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .help("Als PDF mit Markierungen und Handschrift exportieren")
+
+            Button {
+                zeigePanel.toggle()
+            } label: {
+                Image(systemName: "sidebar.trailing")
+            }
+            .help("Seitenleiste ein- oder ausblenden")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
-        .background(.regularMaterial, in: Capsule())
-        .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
+        .buttonStyle(.plain)
+        .font(.system(size: 13))
+        .foregroundStyle(Thema.tinteSekundaer)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
     }
 
     private func zeichnungSpeichern(_ seitenIndex: Int, _ daten: Data) {
@@ -216,117 +233,218 @@ struct PDFDokumentAnsicht: View {
     }
 }
 
-/// Seitenleiste eines Dokuments: Angaben, Farblegende, Markierungen, Handschrift, Notizen.
-struct DokumentInspector: View {
+/// Rechte Spalte: Zusammenfassung, Kernaussagen (KI), Markierungen, Handschrift, Notizen.
+struct DokumentSeitenpanel: View {
     @Bindable var dokument: Dokument
     let steuerung: PDFSteuerung
 
     @Environment(\.modelContext) private var kontext
+    @State private var stufe = 1
     @State private var farbFilter: MarkierungsFarbe?
 
-    private var gefiltert: [Markierung] {
-        dokument.sichtbareMarkierungen.filter { farbFilter == nil || $0.farbe == farbFilter }
+    private var vorschlaege: [Markierung] {
+        (dokument.markierungen ?? []).filter { $0.quelle == .ki && $0.status == .vorgeschlagen }
+            .sorted { $0.seitenIndex < $1.seitenIndex }
+    }
+
+    private var eigene: [Markierung] {
+        dokument.sichtbareMarkierungen.filter { $0.status == .angenommen && (farbFilter == nil || $0.farbe == farbFilter) }
     }
 
     var body: some View {
-        Form {
-            Section("Dokument") {
-                TextField("Titel", text: $dokument.titel)
-                DatePicker("Vorlesung vom", selection: $dokument.datum, displayedComponents: .date)
-                LabeledContent("Seiten", value: "\(dokument.seitenzahl)")
-                if dokument.texterkennungLaeuft {
-                    HStack {
-                        ProgressView().controlSize(.small)
-                        Text("Texterkennung läuft …")
-                    }
-                } else {
-                    let erkannt = (dokument.seiten ?? []).filter(\.ausTexterkennung).count
-                    if erkannt > 0 {
-                        LabeledContent("Per Texterkennung gelesen", value: "\(erkannt) Seiten")
-                    }
-                }
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Kleintitel(text: "Zusammenfassung")
+                Segmentleiste(werte: [0, 1, 2], auswahl: $stufe) { ["Kurz", "Lernen", "Spickzettel"][$0] }
+                    .padding(.top, 12)
+                Text("Zusammenfassungen in drei Stufen erstellt der KI-Tutor – verfügbar ab Ausbaustufe e.")
+                    .font(Thema.ui(13))
+                    .foregroundStyle(Thema.tinteSekundaer)
+                    .lineSpacing(4)
+                    .padding(.top, 14)
 
-            Section("Farben") {
-                ForEach(MarkierungsFarbe.allCases) { farbe in
-                    HStack(spacing: 8) {
-                        Circle().fill(farbe.farbe).frame(width: 12, height: 12)
-                        Text(farbe.bedeutung).font(.callout)
-                    }
-                }
-            }
+                Haarlinie().padding(.vertical, 24)
 
-            Section {
-                Picker("Anzeigen", selection: $farbFilter) {
-                    Text("Alle Farben").tag(MarkierungsFarbe?.none)
-                    ForEach(MarkierungsFarbe.allCases) { farbe in
-                        Text(farbe.bedeutung).tag(MarkierungsFarbe?.some(farbe))
+                HStack {
+                    Kleintitel(text: "Kernaussagen (KI)")
+                    Spacer()
+                    Text("\(vorschlaege.count) offen")
+                        .font(Thema.ui(11))
+                        .foregroundStyle(Thema.tinteTertiaer)
+                }
+                if vorschlaege.isEmpty {
+                    Text("Hier erscheinen Vorschläge der KI zum Übernehmen oder Ablehnen.")
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteTertiaer)
+                        .padding(.top, 10)
+                }
+                ForEach(vorschlaege) { vorschlag in
+                    KernaussageKarte(markierung: vorschlag) {
+                        steuerung.gehe(zu: vorschlag.seitenIndex)
+                    }
+                    .padding(.top, 10)
+                }
+
+                Haarlinie().padding(.vertical, 24)
+
+                HStack {
+                    Kleintitel(text: "Markierungen")
+                    Spacer()
+                    HStack(spacing: 5) {
+                        ForEach(MarkierungsFarbe.allCases) { farbe in
+                            Button {
+                                farbFilter = farbFilter == farbe ? nil : farbe
+                            } label: {
+                                Circle()
+                                    .fill(farbe.farbe)
+                                    .overlay(Circle().strokeBorder(farbFilter == farbe ? Thema.tinte : Color.black.opacity(0.08)))
+                                    .frame(width: 11, height: 11)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Nur „\(farbe.bedeutung)“ anzeigen")
+                        }
                     }
                 }
-                if gefiltert.isEmpty {
-                    Text("Text auswählen und eine Farbe in der Leiste unten antippen.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                if eigene.isEmpty {
+                    Text("Text auswählen und oben eine Farbe wählen: Gelb = wichtig, Rot = prüfungsrelevant, Grün = Definition, Blau = Strukturformel/Mechanismus, Lila = Arzneibuch-Methode.")
+                        .font(Thema.ui(12))
+                        .foregroundStyle(Thema.tinteTertiaer)
+                        .lineSpacing(3)
+                        .padding(.top, 10)
                 }
-                ForEach(gefiltert) { markierung in
+                ForEach(eigene) { markierung in
                     MarkierungsZeile(markierung: markierung) {
                         steuerung.gehe(zu: markierung.seitenIndex)
                     } loeschen: {
                         kontext.delete(markierung)
                     }
+                    .padding(.top, 10)
                 }
-            } header: {
-                Text("Markierungen (\(dokument.sichtbareMarkierungen.count))")
-            }
 
-            let handschrift = (dokument.zeichnungen ?? []).sorted { $0.seitenIndex < $1.seitenIndex }
-            if !handschrift.isEmpty {
-                Section("Handschrift") {
+                let handschrift = (dokument.zeichnungen ?? []).sorted { $0.seitenIndex < $1.seitenIndex }
+                if !handschrift.isEmpty {
+                    Haarlinie().padding(.vertical, 24)
+                    Kleintitel(text: "Handschrift")
                     ForEach(handschrift) { zeichnung in
                         Button {
                             steuerung.gehe(zu: zeichnung.seitenIndex)
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Seite \(zeichnung.seitenIndex + 1)").font(.caption.weight(.semibold))
-                                Text(zeichnung.text.isEmpty ? "Noch nicht erkannt" : zeichnung.text)
-                                    .font(.callout)
-                                    .foregroundStyle(zeichnung.text.isEmpty ? .secondary : .primary)
+                                Text("Seite \(zeichnung.seitenIndex + 1)").font(Thema.ui(11)).foregroundStyle(Thema.tinteTertiaer)
+                                Text(verbatim: zeichnung.text.isEmpty ? "Noch nicht erkannt" : zeichnung.text)
+                                    .font(Thema.ui(13))
+                                    .foregroundStyle(zeichnung.text.isEmpty ? Thema.tinteTertiaer : Thema.tinte)
                                     .lineLimit(3)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .padding(.top, 10)
                     }
                 }
-            }
 
-            Section("Notizen") {
+                Haarlinie().padding(.vertical, 24)
+                Kleintitel(text: "Notizen")
                 TextField("Notizen zur Vorlesung", text: $dokument.notizen, axis: .vertical)
-                    .lineLimit(3...12)
+                    .textFieldStyle(.plain)
+                    .font(Thema.ui(13))
+                    .lineLimit(3...14)
+                    .padding(.top, 10)
+
+                Haarlinie().padding(.vertical, 24)
+                Kleintitel(text: "Unterlage")
+                VStack(alignment: .leading, spacing: 10) {
+                    TextField("Titel", text: $dokument.titel)
+                        .textFieldStyle(.plain)
+                        .font(Thema.ui(13))
+                    DatePicker("Vorlesung vom", selection: $dokument.datum, displayedComponents: .date)
+                        .font(Thema.ui(13))
+                    if dokument.texterkennungLaeuft {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Texterkennung läuft …").font(Thema.ui(12)).foregroundStyle(Thema.tinteSekundaer)
+                        }
+                    } else {
+                        let erkannt = (dokument.seiten ?? []).filter(\.ausTexterkennung).count
+                        if erkannt > 0 {
+                            Text("\(erkannt) Seiten per Texterkennung gelesen")
+                                .font(Thema.ui(12))
+                                .foregroundStyle(Thema.tinteTertiaer)
+                        }
+                    }
+                }
+                .padding(.top, 10)
             }
+            .padding(24)
         }
-        .formStyle(.grouped)
+        .background(Thema.flaeche)
     }
 }
 
-private struct MarkierungsZeile: View {
+/// KI-Vorschlag mit „Ablehnen“ und „Übernehmen“.
+private struct KernaussageKarte: View {
+    @Bindable var markierung: Markierung
+    var springen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button(action: springen) {
+                Text(verbatim: markierung.begruendung.isEmpty ? markierung.text : markierung.begruendung)
+                    .font(Thema.ui(13))
+                    .foregroundStyle(Thema.tinte)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            HStack(spacing: 8) {
+                Text("Vorschlag").font(Thema.ui(11)).foregroundStyle(Thema.tinteTertiaer)
+                Spacer()
+                Button {
+                    markierung.status = .abgelehnt
+                } label: {
+                    Text("Ablehnen")
+                        .font(Thema.ui(12))
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Thema.rahmenStark))
+                }
+                Button {
+                    markierung.status = .angenommen
+                } label: {
+                    Text("Übernehmen")
+                        .font(Thema.ui(12, .mittel))
+                        .foregroundStyle(Thema.tinteInvers)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Thema.tinte, in: RoundedRectangle(cornerRadius: 5))
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Thema.rahmen))
+    }
+}
+
+/// Eigene Markierung in der Seitenleiste.
+struct MarkierungsZeile: View {
     @Bindable var markierung: Markierung
     var springen: () -> Void
     var loeschen: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: 10) {
             Button(action: springen) {
-                HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .top, spacing: 10) {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(markierung.farbe.farbe)
                         .frame(width: 4)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text("Seite \(markierung.seitenIndex + 1)")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Text(markierung.text.isEmpty ? "–" : markierung.text)
-                            .font(.callout)
+                            .font(Thema.ui(11))
+                            .foregroundStyle(Thema.tinteTertiaer)
+                        Text(verbatim: markierung.text.isEmpty ? "–" : markierung.text)
+                            .font(Thema.ui(13))
+                            .foregroundStyle(Thema.tinte)
                             .lineLimit(4)
                     }
                     Spacer(minLength: 0)
@@ -342,12 +460,16 @@ private struct MarkierungsZeile: View {
                 }
                 Button("Löschen", role: .destructive, action: loeschen)
             } label: {
-                Label("Optionen", systemImage: "ellipsis.circle")
-                    .labelStyle(.iconOnly)
+                Image(systemName: "ellipsis")
+                    .foregroundStyle(Thema.tinteTertiaer)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
             }
             .menuStyle(.button)
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
             .fixedSize()
+            .accessibilityLabel("Optionen")
         }
     }
 }

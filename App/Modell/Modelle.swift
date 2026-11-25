@@ -49,6 +49,7 @@ final class Semester {
 final class Lehrveranstaltung {
     var lfdNr: String = ""
     var bezeichnung: String = ""
+    var kurzname: String = ""
     var lehrformRaw: String = Lehrform.v.rawValue
     var sws: String = ""
     var stoffgebieteRaw: [String] = []
@@ -109,6 +110,9 @@ final class Lehrveranstaltung {
     }
 
     var lfdNrTeile: [String] { LfdNr.teile(lfdNr) }
+
+    /// Kurzname, falls vorhanden, sonst die volle Bezeichnung.
+    var anzeigename: String { kurzname.isEmpty ? bezeichnung : kurzname }
 
     /// "[43]" bzw. "[43]*" bei Anmeldepflicht.
     var lfdNrAnzeige: String { LfdNr.anzeige(lfdNr) + (anmeldepflicht ? "*" : "") }
