@@ -16,10 +16,10 @@ final class Datenspeicher {
     private static let schluessel = "aktiverDatenspeicher"
 
     /// Ursprünglicher Speicher (Standardort von SwiftData).
-    static var standardURL: URL { URL.applicationSupportDirectory.appending(path: "default.store") }
+    nonisolated static var standardURL: URL { URL.applicationSupportDirectory.appending(path: "default.store") }
 
     /// Ordner für wiederhergestellte bzw. übernommene Speicher.
-    static var datenOrdner: URL {
+    nonisolated static var datenOrdner: URL {
         URL.applicationSupportDirectory.appending(path: "PharmaTutor-Daten", directoryHint: .isDirectory)
     }
 
@@ -57,7 +57,7 @@ final class Datenspeicher {
 
     /// Entfernt alte wiederhergestellte Speicher (der aktive bleibt). Läuft beim Start,
     /// wenn kein alter Container mehr geöffnet ist.
-    private static func aufraeumen(ausser aktiv: URL) {
+    nonisolated private static func aufraeumen(ausser aktiv: URL) {
         let fm = FileManager.default
         guard let ordner = try? fm.contentsOfDirectory(at: datenOrdner, includingPropertiesForKeys: nil) else { return }
         let aktiverOrdner = aktiv.deletingLastPathComponent().standardizedFileURL
@@ -67,7 +67,7 @@ final class Datenspeicher {
     }
 
     /// Neuer, leerer Zielort für einen wiederhergestellten Speicher.
-    static func neuerSpeicherOrt() -> URL {
+    nonisolated static func neuerSpeicherOrt() -> URL {
         datenOrdner
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
             .appending(path: "PharmaTutor.store")
