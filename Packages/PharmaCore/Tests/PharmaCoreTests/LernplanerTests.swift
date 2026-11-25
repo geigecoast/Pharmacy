@@ -69,9 +69,19 @@ final class LernplanerTests: XCTestCase {
         let spaeter = Lernplaner.planen(ziele: ziele, wochenplan: .standard, ab: tag(3), kalender: kalender)
         XCTAssertEqual(spaeter.einheiten.map(\.minuten).reduce(0, +), 600)
         XCTAssertTrue(spaeter.einheiten.allSatisfy { $0.tag >= tag(3) })
-        let tageNormal = Set(normal.einheiten.map(\.tag)).count
-        let tageSpaeter = Set(spaeter.einheiten.map(\.tag)).count
-        XCTAssertLessThanOrEqual(tageSpaeter, tageNormal)
+        // Nach verpassten Tagen steigt das Tagestempo.
+        func schnitt(_ plan: Lernplan) -> Double {
+            Double(plan.einheiten.map(\.minuten).reduce(0, +)) / Double(Set(plan.einheiten.map(\.tag)).count)
+        }
+        XCTAssertGreaterThan(schnitt(spaeter), schnitt(normal))
+    }
+
+    func testStoffWirdVerteiltStattSofortAbgearbeitet() {
+        let ziele = [LernZiel(id: "a", pruefungstag: tag(10), bedarfMinuten: 600)]
+        let plan = Lernplaner.planen(ziele: ziele, wochenplan: .standard, ab: montag, kalender: kalender)
+        XCTAssertEqual(plan.einheiten.map(\.minuten).reduce(0, +), 600)
+        XCTAssertGreaterThanOrEqual(Set(plan.einheiten.map(\.tag)).count, 6, "600 min auf 10 Tage sollten über mehrere Tage verteilt werden")
+        XCTAssertTrue(minutenProTag(plan).values.allSatisfy { $0 <= 90 })
     }
 
     func testBelegteZeitUndBlockpraktikum() {

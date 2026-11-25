@@ -81,12 +81,16 @@ public enum Lernplaner {
         public var vorlaufTage: Int
         public var eingangsFaktor: Double
         public var maxBloeckeProZielUndTag: Int
+        /// Höchstens dieses Vielfache des gleichmäßigen Tagestempos pro Prüfung und Tag.
+        public var tempoFaktor: Double
 
-        public init(blockMinuten: Int = 45, vorlaufTage: Int = 28, eingangsFaktor: Double = 2, maxBloeckeProZielUndTag: Int = 3) {
+        public init(blockMinuten: Int = 45, vorlaufTage: Int = 28, eingangsFaktor: Double = 2,
+                    maxBloeckeProZielUndTag: Int = 3, tempoFaktor: Double = 1.5) {
             self.blockMinuten = blockMinuten
             self.vorlaufTage = vorlaufTage
             self.eingangsFaktor = eingangsFaktor
             self.maxBloeckeProZielUndTag = maxBloeckeProZielUndTag
+            self.tempoFaktor = tempoFaktor
         }
     }
 
@@ -126,12 +130,23 @@ public enum Lernplaner {
             if let grenze = kapazitaetsGrenzen[tag] { kapazitaet = min(kapazitaet, grenze) }
             kapazitaet -= belegteMinuten[tag] ?? 0
             var bloeckeHeute: [String: Int] = [:]
+            var minutenHeute: [String: Int] = [:]
+            // Gleichmäßiges Tagestempo je Prüfung: Restaufwand ÷ verbleibende Tage, mit Spielraum.
+            var tageslimit: [String: Int] = [:]
+            for ziel in ziele {
+                guard let r = rest[ziel.id], r > 0, let pt = pruefTag[ziel.id], tag < pt else { continue }
+                let tageBis = max(1, kalender.dateComponents([.day], from: tag, to: pt).day ?? 1)
+                let tempo = Double(r) / Double(tageBis) * optionen.tempoFaktor
+                let gerundet = Int((tempo / Double(mindestBlock)).rounded(.up)) * mindestBlock
+                tageslimit[ziel.id] = max(optionen.blockMinuten, gerundet)
+            }
 
             while kapazitaet >= mindestBlock {
                 var bester: (id: String, wert: Double, pruefung: Date)?
                 for ziel in ziele {
                     guard let r = rest[ziel.id], r > 0, let pt = pruefTag[ziel.id], tag < pt,
-                          (bloeckeHeute[ziel.id] ?? 0) < optionen.maxBloeckeProZielUndTag else { continue }
+                          (bloeckeHeute[ziel.id] ?? 0) < optionen.maxBloeckeProZielUndTag,
+                          (tageslimit[ziel.id] ?? 0) - (minutenHeute[ziel.id] ?? 0) >= mindestBlock else { continue }
                     let tageBis = kalender.dateComponents([.day], from: tag, to: pt).day ?? 0
                     guard tageBis <= vorlauf[ziel.id] ?? optionen.vorlaufTage else { continue }
                     var wert = Double(r) / Double(max(tageBis, 1)) * ziel.gewicht
@@ -145,10 +160,12 @@ public enum Lernplaner {
                     }
                 }
                 guard let gewaehlt = bester, let r = rest[gewaehlt.id] else { break }
-                let minuten = min(optionen.blockMinuten, kapazitaet, r)
+                let spielraum = (tageslimit[gewaehlt.id] ?? 0) - (minutenHeute[gewaehlt.id] ?? 0)
+                let minuten = min(optionen.blockMinuten, kapazitaet, r, spielraum)
                 rest[gewaehlt.id] = r - minuten
                 kapazitaet -= minuten
                 bloeckeHeute[gewaehlt.id, default: 0] += 1
+                minutenHeute[gewaehlt.id, default: 0] += minuten
                 geplant[gewaehlt.id, default: [:]][tag, default: 0] += minuten
             }
 
