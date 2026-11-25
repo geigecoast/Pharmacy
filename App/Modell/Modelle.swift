@@ -77,6 +77,9 @@ final class Lehrveranstaltung {
     @Relationship(deleteRule: .cascade, inverse: \Lerneinheit.lehrveranstaltung)
     var lerneinheiten: [Lerneinheit]? = []
 
+    @Relationship(deleteRule: .cascade, inverse: \Dokument.lehrveranstaltung)
+    var dokumente: [Dokument]? = []
+
     init(lfdNr: String, bezeichnung: String, lehrform: Lehrform = .v, sws: String = "", sortierung: Int = 0) {
         self.lfdNr = lfdNr
         self.bezeichnung = bezeichnung
@@ -294,5 +297,9 @@ enum Datenschema {
         Lernpfad.self,
         StoffgebietZuordnung.self,
         Lerneinheit.self,
+        Dokument.self,
+        Seite.self,
+        Markierung.self,
+        Zeichnung.self,
     ]
 }

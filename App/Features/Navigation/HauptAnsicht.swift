@@ -66,10 +66,19 @@ struct DetailAnsicht: View {
                     .id(semester.persistentModelID)
             }
         case .lehrveranstaltung(let lv):
-            LehrveranstaltungAnsicht(lv: lv) {
+            LehrveranstaltungAnsicht(lv: lv, beiLoeschen: {
                 auswahl = lv.semester.map { .semester($0) } ?? .heute
-            }
+            }, oeffnen: { dokument, seite in
+                auswahl = .dokument(dokument, seite: seite)
+            })
             .id(lv.persistentModelID)
+        case .dokument(let dokument, let seite):
+            DokumentAnsicht(dokument: dokument, startSeite: seite, zurueck: {
+                auswahl = dokument.lehrveranstaltung.map { .lehrveranstaltung($0) } ?? .heute
+            }, oeffnen: { anderes, andereSeite in
+                auswahl = .dokument(anderes, seite: andereSeite)
+            })
+            .id("\(dokument.persistentModelID.hashValue)-\(seite)")
         }
     }
 }
@@ -81,12 +90,29 @@ struct LVFenster: View {
     let id: PersistentIdentifier?
     @Environment(\.modelContext) private var kontext
     @Environment(\.dismissWindow) private var dismissWindow
+    @State private var offen: OffenesDokument?
+
+    private struct OffenesDokument: Hashable {
+        let dokument: Dokument
+        let seite: Int
+    }
 
     var body: some View {
         if let id, let lv = kontext.model(for: id) as? Lehrveranstaltung, !lv.isDeleted {
             NavigationStack {
-                LehrveranstaltungAnsicht(lv: lv) {
-                    dismissWindow(id: Self.fensterID, value: id)
+                if let offen {
+                    DokumentAnsicht(dokument: offen.dokument, startSeite: offen.seite, zurueck: {
+                        self.offen = nil
+                    }, oeffnen: { dokument, seite in
+                        self.offen = OffenesDokument(dokument: dokument, seite: seite)
+                    })
+                    .id(offen)
+                } else {
+                    LehrveranstaltungAnsicht(lv: lv, beiLoeschen: {
+                        dismissWindow(id: Self.fensterID, value: id)
+                    }, oeffnen: { dokument, seite in
+                        offen = OffenesDokument(dokument: dokument, seite: seite)
+                    })
                 }
             }
         } else {

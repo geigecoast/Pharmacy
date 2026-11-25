@@ -35,6 +35,7 @@ enum LVTab: String, CaseIterable, Identifiable {
 struct LehrveranstaltungAnsicht: View {
     @Bindable var lv: Lehrveranstaltung
     var beiLoeschen: () -> Void = {}
+    var oeffnen: (Dokument, Int) -> Void = { _, _ in }
 
     @SceneStorage("lvTab") private var tab: LVTab = .vorlesungen
     @AppStorage("lvInspectorSichtbar") private var zeigeInspector = true
@@ -95,8 +96,7 @@ struct LehrveranstaltungAnsicht: View {
     private var inhalt: some View {
         switch tab {
         case .vorlesungen:
-            FolgtInStufe(titel: "Vorlesungen", symbol: "doc.richtext",
-                         beschreibung: "Import von PDFs, Folien, Scans und Audio, Markierungen mit Maus, Trackpad und Apple Pencil sowie KI-Zusammenfassungen folgen in Ausbaustufe c.")
+            VorlesungenAnsicht(lv: lv, oeffnen: oeffnen)
         case .pruefung:
             PruefungsvorbereitungAnsicht(lv: lv)
         case .tutor:

@@ -9,6 +9,7 @@ enum Bereich: Hashable {
     case einstellungen
     case semester(Semester)
     case lehrveranstaltung(Lehrveranstaltung)
+    case dokument(Dokument, seite: Int)
 }
 
 struct NavigationsAuswahlSchluessel: FocusedValueKey {

@@ -6,6 +6,10 @@
 	<string>PharmaTutor trägt deine Teilprüfungen, Fristen und Lerneinheiten in einen eigenen Kalender „PharmaTutor“ ein.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>PharmaTutor trägt deine Teilprüfungen, Fristen und Lerneinheiten in einen eigenen Kalender „PharmaTutor“ ein.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>PharmaTutor erstellt aus deinen Vorlesungsaufnahmen ein durchsuchbares Transkript.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>PharmaTutor scannt mit der Kamera Skripte und Mitschriften.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
 	<string>PharmaTutor trägt deine Teilprüfungen, Fristen und Lerneinheiten in deinen Kalender ein.</string>
 </dict>

@@ -9,6 +9,7 @@ struct Seitenleiste: View {
 
     @Query(sort: \Semester.sortierung) private var alleSemester: [Semester]
     @Query(sort: \Lehrveranstaltung.lfdNr) private var alleLVs: [Lehrveranstaltung]
+    @Environment(\.modelContext) private var kontext
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var mehrereFenster
 
@@ -21,10 +22,76 @@ struct Seitenleiste: View {
             .sorted { ($0.semester?.sortierung ?? 0, $0.sortierung) < ($1.semester?.sortierung ?? 0, $1.sortierung) }
     }
 
+    private struct Unterlagentreffer: Identifiable {
+        let id: String
+        let dokument: Dokument
+        let seite: Int
+        let ort: String
+        let ausschnitt: String
+    }
+
+    /// Volltextsuche in Seiten (inkl. Texterkennung), Handschrift, Markierungen und Transkripten.
+    private var unterlagenTreffer: [Unterlagentreffer] {
+        let begriff = suche.trimmingCharacters(in: .whitespaces)
+        guard begriff.count >= 3 else { return [] }
+        var ergebnis: [Unterlagentreffer] = []
+        var gesehen = Set<String>()
+
+        func hinzufuegen(_ dokument: Dokument?, seite: Int, ort: String, text: String) {
+            guard let dokument else { return }
+            let schluessel = "\(dokument.kennung)-\(seite)"
+            guard !gesehen.contains(schluessel) else { return }
+            gesehen.insert(schluessel)
+            ergebnis.append(Unterlagentreffer(id: schluessel, dokument: dokument, seite: seite, ort: ort,
+                                              ausschnitt: Textausschnitt.um(begriff, in: text, umfeld: 40)))
+        }
+
+        var seitenAbfrage = FetchDescriptor<Seite>(predicate: #Predicate { $0.text.localizedStandardContains(begriff) })
+        seitenAbfrage.fetchLimit = 40
+        for seite in (try? kontext.fetch(seitenAbfrage)) ?? [] {
+            let art = seite.dokument?.typ == .praesentation ? "Folie" : "Seite"
+            hinzufuegen(seite.dokument, seite: seite.nummer, ort: "\(art) \(seite.nummer + 1)", text: seite.text)
+        }
+        let zeichnungen = FetchDescriptor<Zeichnung>(predicate: #Predicate { $0.text.localizedStandardContains(begriff) })
+        for zeichnung in (try? kontext.fetch(zeichnungen)) ?? [] {
+            hinzufuegen(zeichnung.dokument, seite: zeichnung.seitenIndex, ort: "Handschrift, Seite \(zeichnung.seitenIndex + 1)", text: zeichnung.text)
+        }
+        let markierungen = FetchDescriptor<Markierung>(predicate: #Predicate { $0.text.localizedStandardContains(begriff) })
+        for markierung in (try? kontext.fetch(markierungen)) ?? [] {
+            hinzufuegen(markierung.dokument, seite: markierung.seitenIndex, ort: "Markierung, Seite \(markierung.seitenIndex + 1)", text: markierung.text)
+        }
+        let aufnahmen = FetchDescriptor<Dokument>(predicate: #Predicate {
+            $0.transkriptText.localizedStandardContains(begriff) || $0.titel.localizedStandardContains(begriff)
+        })
+        for dokument in (try? kontext.fetch(aufnahmen)) ?? [] {
+            let text = dokument.transkriptText.isEmpty ? dokument.titel : dokument.transkriptText
+            hinzufuegen(dokument, seite: 0, ort: dokument.typ == .audio ? "Transkript" : "Titel", text: text)
+        }
+        return ergebnis
+    }
+
     var body: some View {
         List(selection: $auswahl) {
             if !suche.trimmingCharacters(in: .whitespaces).isEmpty {
-                Section("Suchergebnisse") {
+                let unterlagen = unterlagenTreffer
+                if !unterlagen.isEmpty {
+                    Section("In Unterlagen") {
+                        ForEach(unterlagen) { treffer in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Label(treffer.dokument.titel, systemImage: treffer.dokument.typ.symbol)
+                                    .lineLimit(1)
+                                Text(verbatim: "\(treffer.dokument.lehrveranstaltung?.lfdNrAnzeige ?? "") \(treffer.ort)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(treffer.ausschnitt)
+                                    .font(.caption)
+                                    .lineLimit(2)
+                            }
+                            .tag(Bereich.dokument(treffer.dokument, seite: treffer.seite))
+                        }
+                    }
+                }
+                Section("Lehrveranstaltungen") {
                     if treffer.isEmpty {
                         Text("Keine Treffer").foregroundStyle(.secondary)
                     }

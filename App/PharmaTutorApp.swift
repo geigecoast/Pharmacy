@@ -42,6 +42,14 @@ struct PharmaTutorApp: App {
             }
         }
 
+        WindowGroup("Unterlage", id: DokumentFenster.fensterID, for: PersistentIdentifier.self) { $id in
+            if let container {
+                DokumentFenster(id: id)
+                    .modelContainer(container)
+                    .environment(\.locale, .deutsch)
+            }
+        }
+
         #if os(macOS)
         Settings {
             if let container {
